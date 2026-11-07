@@ -24,7 +24,7 @@ DEFAULT_CHANNELS.splice(0, DEFAULT_CHANNELS.length, ...DEFAULT_CHANNELS.filter((
 let CHANNELS = (process.env.TG_CHANNELS ? process.env.TG_CHANNELS.split(',') : DEFAULT_CHANNELS).map(cleanCh).filter(Boolean);
 const KEEP = 48 * 3600e3;
 const TTL = 10 * 60e3; // ціль зникає з мапи, якщо про неї 10 хвилин нічого не пишуть
-const FADE_TIME = 3 * 60e3; // за скільки до кінця TTL починається затухання (прозорість)
+const FADE_TIME = 3 * 60e3; // останні 3 хвилини до кінця TTL, коли ціль стає напівпрозорою
 let DATA = path.join(__dirname, 'data'), TOKEN = process.env.ALERTS_TOKEN || '';
 let alerts = [], ballWarn = [], source = 'очікування', snaps = [], threats = new Map(), geoErr = '';
 const chStat = {}; // стан кожного каналу: { ok, n, at, err, tried, fails, until, busy }
@@ -37,15 +37,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function health() {
   const now = Date.now(), v = Object.values(chStat);
   const fresh = v.filter(x => x.ok && now - x.at < FRESH).length, tried = v.filter(x => x.tried).length;
-  // «недоступні» лише коли кожен канал уже пробували і жоден не відповідає (під час прогріву після старту — ні)
   return { fresh, total: CHANNELS.length, stale: CHANNELS.length > 0 && tried >= CHANNELS.length && fresh === 0 };
 }
-// Опорний час для зникнення цілей: поки канали недоступні, «годинник» цілей завмирає на останньому успішному опитуванні
 const refTime = hl => hl.stale ? Math.max(lastGood, Date.now() - STALE_MAX) : Date.now();
 
-let F = (u, o) => fetch(u, o); // у exe підміняється на net.fetch з Electron (див. main.js)
+let F = (u, o) => fetch(u, o);
 const get = async (u, h) => F(u, { headers: h, signal: AbortSignal.timeout(12000) });
-function logErr(m) { // log.txt не росте безкінечно: понад 200 КБ лишаємо останні ~100 КБ
+function logErr(m) {
   try {
     fs.mkdirSync(DATA, { recursive: true });
     const f = path.join(DATA, 'log.txt');
@@ -54,18 +52,15 @@ function logErr(m) { // log.txt не росте безкінечно: понад
   } catch (e) {}
 }
 
-// Місця: спершу довідник міст (places.js), далі райони з public/raions.json (центр району)
 const RAION_P = [];
 const LB = '(?<![а-яіїєґ\'’])';
-// Назви областей: «Житомирщина», «Житомирської області», «Волинь» … → центр області за її полігонами (public/raions.json),
-// а не обласне місто: так значок стоїть «десь на Житомирщині», а не прямо на Житомирі
 const REGIONS = [['вінницьк', 'Вінниччин'], ['волинськ', "Волинщин|Волин(?:ь|і|ю)(?![а-яіїєґ])"], ['дніпропетровськ', 'Дніпропетровщин|Дніпровщин'], ['донецьк', 'Донеччин'],
   ['житомирськ', 'Житомирщин'], ['закарпатськ', 'Закарпатт[а-яіїєґ]*'], ['запорізьк', 'Запоріжчин'], ['івано-франківськ', 'Прикарпатт[а-яіїєґ]*|Івано-Франківщин|Франківщин'],
   ['київськ', 'Київщин'], ['кіровоградськ', 'Кіровоградщин'], ['луганськ', 'Луганщин'], ['львівськ', 'Львівщин'], ['миколаївськ', 'Миколаївщин'], ['одеськ', 'Одещин'],
   ['полтавськ', 'Полтавщин'], ['рівненськ', 'Рівненщин'], ['сумськ', 'Сумщин'], ['тернопільськ', 'Тернопільщин'], ['харківськ', 'Харківщин'], ['херсонськ', 'Херсонщин'],
   ['хмельницьк', 'Хмельниччин'], ['черкаськ', 'Черкащин'], ['чернівецьк', 'Буковин[а-яіїєґ]*|Чернівеччин'], ['чернігівськ', 'Чернігівщин']]
   .map(([stem, words]) => [stem, new RegExp(LB + '(?:' + words + '|' + stem + '[а-яіїєґ]*\\s+(?:област|обл(?![а-яіїєґ])))', 'i')]);
-const OBL_GEO = new Map(); // norm(область) → зважений за площею центр і розмах
+const OBL_GEO = new Map();
 function addGeo(o, geom) {
   const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
   let g = OBL_GEO.get(norm(o)); if (!g) OBL_GEO.set(norm(o), g = { a: 0, x: 0, y: 0, la0: 90, la1: -90, lo0: 180, lo1: -180 });
@@ -80,14 +75,12 @@ function addGeo(o, geom) {
   }
 }
 const regionGeo = stem => { for (const [k, g] of OBL_GEO) if (k.startsWith(stem) && g.a) return { la: g.y / g.a, lo: g.x / g.a, h: g.la1 - g.la0, w: g.lo1 - g.lo0 }; };
-// «через північ області», «на півночі Київщини»: зсуваємо точку від центру області в бік світу (на ~третину розмаху області)
 function dirShift(line, m, g) {
   const rest = line.slice(m.index + m[0].length), D = "(півн|півд|схід|захід)[а-яіїєґ'’-]*";
   const before = new RegExp(D + '\\s*(?:частин[а-яіїєґ]*\\s*)?$', 'i').exec(line.slice(Math.max(0, m.index - 24), m.index)),
     after = new RegExp("^[а-яіїєґ'’]*\\s*(?:через|по|на|в|у)?\\s*" + D + '\\s*(?:частин[а-яіїєґ]*\\s*)?област', 'i').exec(rest.slice(0, 48)), t = (before || after || [''])[0];
   return [((/півн/i.test(t) ? 1 : 0) - (/півд/i.test(t) ? 1 : 0)) * g.h * .32, ((/схід/i.test(t) ? 1 : 0) - (/захід/i.test(t) ? 1 : 0)) * g.w * .32];
 }
-// Довідник ~29 тисяч населених пунктів (public/settlements.json): міста, селища, села. Шукаємо за «основою» слова, щоб «на Юріївку» знаходило «Юріївка».
 const GAZ = new Map();
 const STEM_END = /(ою|ею|єю|ої|ій|ами|ями|ах|ях|ам|ям|ів|ом|ем|єм|[аяеєоиіуюї])$/;
 const stemOf = w => { const x = String(w).toLowerCase().replace(/[’ʼ`‘]/g, "'"); return x.length > 4 ? x.replace(STEM_END, '') : x; };
@@ -101,7 +94,6 @@ function loadGaz() {
   }
 }
 
-// Розширений список стоп-слів топоніміки
 const GAZ_STOP = new Set([
   'група', 'групи', 'групою', 'увага', 'уважно', 'швидко', 'гучно', 'відбій', 'тривога', 'тривоги', 'загроза', 'загрози', 
   'небезпека', 'балістика', 'балістики', 'ракета', 'ракети', 'ракет', 'шахед', 'шахеди', 'шахедів', 'бпла', 'укриття', 
@@ -116,17 +108,16 @@ const GAZ_STOP = new Set([
   'тактична', 'гучний', 'хлопок', 'детонація', 'приліт', 'влучання'
 ].map(stemOf));
 
-// \b у JS не працює з кирилицею, тому «слово-підказка» перед назвою перевіряємо через lookbehind
 const CUE = /(?:(?<![а-яіїєґ'’])(?:на|до|повз|біля|через|над|від|курс\S*|напрямк\S*|район\S*|р-н\S*|в|у|з|із)|→|➡)\s*(?:\S{1,12}\s+)?$/i;
-function gazPlaces(line, covered, anchors, hint) { // → [[індекс, широта, довгота, false], …]
+function gazPlaces(line, covered, anchors, hint) {
   const out = [], W = /(?<![А-ЯІЇЄҐа-яіїєґ'’ʼ-])[А-ЯІЇЄҐ][а-яіїєґ'’ʼ]{2,}(?:[-\s][А-ЯІЇЄҐ][а-яіїєґ'’ʼ]{2,}){0,2}(?![а-яіїєґ'’ʼ])/g;
   let m, prevOk = false, anchor = anchors[anchors.length - 1];
   while ((m = W.exec(line))) {
     const idx = m.index;
-    if (covered.some(([a, b]) => idx >= a - 1 && idx < b)) { prevOk = true; continue; } // уже відоме місце теж «відкриває» перелік через кому
+    if (covered.some(([a, b]) => idx >= a - 1 && idx < b)) { prevOk = true; continue; }
     const ends = []; m[0].replace(/[^-\s]+/g, (w, o) => { ends.push(o + w.length); return w; });
     let hit = null, used = 0;
-    for (let n = ends.length; n >= 1 && !hit; n--) { // спершу довші назви: «Жовті Води», «Кам'янське-Дніпровське»
+    for (let n = ends.length; n >= 1 && !hit; n--) {
       const cand = m[0].slice(0, ends[n - 1]), key = stemOf(cand);
       if (n === 1 && GAZ_STOP.has(key)) continue;
       const list = GAZ.get(key); if (list) { hit = list; used = cand.length; }
@@ -141,14 +132,14 @@ function gazPlaces(line, covered, anchors, hint) { // → [[індекс, шир
     else {
       const cs = hit.slice().sort((a, b) => b.pop - a.pop);
       if (anchor) { const near = cs.map(c => [c, dist([c.la, c.lo], anchor)]).sort((a, b) => a[1] - b[1])[0]; if (near[1] < 1.6) pick = near[0]; }
-      if (!pick && hint) { const near = cs.map(c => [c, dist([c.la, c.lo], hint)]).sort((a, b) => a[1] - b[1])[0]; if (near[1] < 3) pick = near[0]; } // регіональний канал: беремо збіг найближчий до «його» міста
+      if (!pick && hint) { const near = cs.map(c => [c, dist([c.la, c.lo], hint)]).sort((a, b) => a[1] - b[1])[0]; if (near[1] < 3) pick = near[0]; }
       if (!pick && cs[0].pop >= 1.8 * (cs[1].pop || 0.01) && cs[0].pop >= 1) pick = cs[0];
     }
     if (pick) { out.push([idx, pick.la, pick.lo, false]); anchor = [pick.la, pick.lo]; prevOk = true; covered.push([idx, idx + used + 1]); } else prevOk = false;
   }
   return out;
 }
-function placesRaw(line, hint) { // [[широта, довгота, чи_це_область], …] у порядку згадування
+function placesRaw(line, hint) {
   line = String(line).replace(/[ʼ`‘]/g, '’');
   const f = [], covered = [], regs = [];
   for (const [stem, re] of REGIONS) {
@@ -174,34 +165,24 @@ function placesRaw(line, hint) { // [[широта, довгота, чи_це_о
 }
 const places = line => placesRaw(line).map(p => [p[0], p[1]]);
 
-// Фільтр заперечення вибухів: "вибухів не було", "тихо, без прильотів"
 const BOOM_NEGATION = /(?:немає|без|не\s+чу\S*|тихо|відсутн\S*|наразі\s+спокійно)\s+(?:\S+\s+){0,3}?(?:вибух|влучан|прильот|хлопк)|(?:вибух|влучан|прильот|хлопк)\S*\s+(?:немає|не\s+було|не\s+зафіксовано|відсутн|не\s+чути)/i;
 
 function kind(l) {
-  // вибухи / прильоти — окремий тип: значок там, де чути вибухи (із запереченням хибних вибухів)
   if (/вибух|прильот|влучанн|влучив|влучили|детонаці|(?:чути|чутно|гучн\S*)\s+хлопк/i.test(l) && !BOOM_NEGATION.test(l)) return 'boom';
-  // балістика (разом з аеробалістикою «Кинджал», КН-23/25, С-300/С-400 по наземних цілях)
   if (/балістик|балістичн|аеробаліст|іскандер|кн-?2[345]|х-?47|кинджал|кінжал|фатех|фатх|точка-?у|оперативно-тактичн|(?:ракет\S*|пуск\S*|удар\S*)\s+(?:зрк\s+)?с-?[34]00|с-?[34]00\s+(?:на|по|курсом)/i.test(l)) return 'ballistic';
   if (/крилат|ракет|калібр|х-?101|х-?555|х-?22|х-?59|х-?69|циркон|онікс|буревісник|орєшнік|орешнік/i.test(l)) return 'missile';
-  // реактивні шахеди (Герань-3 / jet) — окремий тип
   if (/реактивн\S*\s+(?:\S+\s+){0,2}?(?:шахед|бпла|дрон|безпілот|герань|геран|ударн)|геран[ьі]?[-\s]?3|(?<![a-z])jet[-\s]?(?:shahed|geran|drone)|шахед\S*[-\s]?3\d\d/i.test(l) && !/артилері|рсзв|град\b|смерч|ураган/i.test(l)) return 'jet';
   if (/шахед|шахеді|бпла|дрон|безпілот|герань|гербер|мопед|молни[яі]|камікадзе|імітатор|shahed|geran/i.test(l)) return 'shahed';
 }
 
-// Підсумки «у ніч на …», «за ніч збито …» — це не живі цілі
 const NIGHT = /(?:у|за|протягом)\s+ніч\S*|протягом ночі|вранці|зафіксовано влучання|місцях падіння|локаці[яй] влучан|(?<![а-яіїєґ])[ув]ночі|минул\S*\s+ноч|цієї\s+ночі|сьогодні\s+вночі|вчора|за\s+добу|упродовж\s+(?:ночі|доби)|завдал[аио]\s+(?:\S+\s+){0,2}?удар|завдав\s+(?:\S+\s+){0,2}?удар|завдан\S*\s+удар|(?:було|були)\s+(?:випущен|запущен|збит|знищен|завдан|пошкоджен)|випустил[аи]|запустил[аи]\s+по|наслідки|заявив|заявила|за\s+словами|[—–-]\s*зеленськ|зеленськ\S*\s+(?:заявив|повідомив)|дснс|(?:поранених|постраждалих|загиблих)\s+не\s+зафіксован\S*|спалахн\S*\s+(?:\S+\s+){0,2}?(?:автомобіл|авто|будинок|будівл|склад)|момент\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|(?:відео|кадри|фото|запис)\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|вирв(?:а|и|у|і|ою)(?![а-яіїєґ])|після\s+(?:прильот|влучанн)|звіт\s+за|підсумки\s+(?:доби|ночі)|ранкове\s+зведення|зведення\s+генштабу|подробиці\s+атаки|ліквідація\s+наслідків|пожежно-рятувальн|руйнування\s+взанаслідок|пошкоджено\s+приватні|уламки\s+(?:впали|ушкодили|пошкодили)|знайдено\s+боєголовку|роботи\s+з\s+знешкодження|результати\s+роботи\s+ппо|підтверджено\s+знищення|ураження\s+цілі|знищено\s+ворожу\s+техніку/i;
 
-// Службові/рекламні пости каналів та донати
 const NOISE = /дякуємо|дякую\s|донат|підтримайте|реклам|проєкт|проект\s|monobank|переходьте|читач|довіряйте|прожили|найважч|app\s?store|google\s?play|збір\b|соборка|підписуйтесь|канал\s+друзів|партнерський\s+пост|промокод|знижка|крипта|заробіток|казино|ставки|посилання\s+в\s+шапці|читайте\s+також|джерело:|інсайд|ексклюзив|надіслати\s+новину|наш\s+бот|опитування|ставте\s+лайк|реакції|підпишись|найновіші\s+новини|офіційний\s+мерч|роззіграш|вигравай|безкоштовно|рекомендація|вже\s+на\s+каналі|подробиці\s+посилання/i;
 
-// Перевірка на хибні тривоги: "не підтвердилось", "помилкова ціль"
 const FALSE_ALARM = /не\s+підтвердил|хибна\s+ціль|акустична\s+помилка|загроза\s+минула|чисте\s+небо|цілей\s+не\s+виявлено|помилковий\s+пуск|чисто\s+в\s+області/i;
 
-// Банер «балістична загроза» лише для коротких оперативних повідомлень: має бути ознака загрози/пуску/курсу
 const BALL_CUE = /загроз|небезпек|пуск|запуск|курс|летить|летять|прямує|рухаєт|напрямк|уваг|група|швидкісн|у\s+повітрі|виліт|зліт/i;
-// «→Бориспіль», «курсом на Київ», «прямує до …» — названо місце, ДО ЯКОГО летить ціль, а не де вона зараз
 const DEST = /^[^а-яіїєґa-z0-9]*(?:→|➡|далі)|курс|напрямк|прямує|рухаєт/i;
-// Кількість цілей у групі: «2 реактивні шахеди», «(2х)», «×3», «три БпЛА», «пара шахедів»
 const NOUN = "шахед|геран|бпла|дрон|безпілот|ракет|герань|калібр|іскандер|кинджал|мопед|молні|ціл|об['’ʼ]єкт";
 const NUMW = { пар: 2, дв: 2, дві: 2, три: 3, трьох: 3, чотир: 4, "п['’ʼ]ят": 5, "п['’ʼ]яти": 5, шіст: 6, шест: 6, сім: 7, сем: 7, вісім: 8, восьм: 8, "дев['’ʼ]ят": 9, десят: 10 };
 const NUMRE = new RegExp('(?<![а-яіїєґ])(' + Object.keys(NUMW).join('|') + ")[а-яіїєґ]*\\s+(?:[а-яіїєґ'’ʼ-]+\\s+){0,2}?(?:" + NOUN + ')', 'i');
@@ -213,17 +194,16 @@ function countOf(l) {
   return n >= 2 && n <= 99 ? n : undefined;
 }
 
-const CLOSING = /збит|збив|знищен|мінус|зник|відбій|відбито|покинув|покинули|вийшов за межі|вийшли за межі|ціль втрачен|локаційно\s+втрачено|впав|розбився|припинив\s+існування|немає\s+цілей|чисто/i;
+const CLOSING = /збит[аіоу]?|збив\w*|знищен[аіоу]?|мінус\b|ліквідован[аіоу]?|посаджен[аіоу]?|приземлен[аіоу]?|усунут[аіоу]?|зник|відбій|відбито|покинув|покинули|вийшов за межі|вийшли за межі|ціль втрачен|локаційно\s+втрачено|впав|розбився|припинив\s+існування|немає\s+цілей|чисто/i;
 const dist = (a, b) => Math.hypot(a[0] - b[0], (a[1] - b[1]) * Math.cos(a[0] * Math.PI / 180));
 
-// ---- Тривоги: ключі "Область", "Область|Район район", "м. Київ"; рівні red/yellow; тип AIR/ART ----
 const norm = s => String(s || '').replace(/[’ʼ`‘]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
 const CANON = new Map(), NAMES = new Map(); let TREE = {}, treeAt = 0;
-function loadGeo() { // назви з public/raions.json — єдині «правильні» ключі для клієнта
+function loadGeo() {
   const g = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'raions.json')));
   for (const f of g.features) {
     const { o, n } = f.properties, k = o + '|' + n;
-    try { // центр району для пошуку «Бучанський район», «на Бучанщину» тощо
+    try {
       const ring = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0];
       const xs = ring.map(p => p[0]), ys = ring.map(p => p[1]);
       const stem = n.replace(/\s*район.*/i, '').replace(/(ськ|цьк|зьк)?(ий|ій)$/i, '$1');
@@ -236,7 +216,7 @@ function loadGeo() { // назви з public/raions.json — єдині «пра
   }
   CANON.set(norm('м. Київ'), 'м. Київ');
 }
-async function loadTree() { // дерево регіонів siren.pp.ua: область → район → громада
+async function loadTree() {
   const j = await (await get('https://siren.pp.ua/api/v3/regions')).json(), t = {};
   const walk = (n, st, di) => {
     if (n.regionType === 'State') { st = n.regionName; di = null; }
@@ -249,12 +229,12 @@ async function loadTree() { // дерево регіонів siren.pp.ua: обл
 const RANK = { yellow: 1, red: 2 };
 function add(m, k, l, t, p) {
   k = CANON.get(norm(k)); if (!k) return false;
-  const id = k + '#' + t + (p ? '~' : ''), o = m.get(id); // громадські тривоги (p) — окремо, нижчий пріоритет
+  const id = k + '#' + t + (p ? '~' : ''), o = m.get(id);
   if (!o) m.set(id, { k, l, t, p }); else if (RANK[l] > RANK[o.l]) o.l = l;
   return true;
 }
 const atype = x => x === 'AIR' || x === 'air_raid' ? 'AIR' : ['ARTILLERY', 'URBAN_FIGHTS', 'artillery_shelling', 'urban_fights'].includes(x) ? 'ART' : null;
-async function tokenAlerts() { // alerts.in.ua (потрібен безкоштовний токен)
+async function tokenAlerts() {
   const j = await (await get('https://api.alerts.in.ua/v1/alerts/active.json', { Authorization: 'Bearer ' + TOKEN })).json(), m = new Map();
   for (const a of j.alerts) {
     const t = atype(a.alert_type); if (!t) continue;
@@ -265,8 +245,8 @@ async function tokenAlerts() { // alerts.in.ua (потрібен безкошт�
   }
   return { list: [...m.values()], note: 'alerts.in.ua' };
 }
-async function sirenAlerts() { // siren.pp.ua — безкоштовне дзеркало ukrainealarm, без ключа
-  if (!Object.keys(TREE).length || Date.now() - treeAt > 6 * 3600e3) { try { await loadTree(); } catch (e) { /* без дерева шукаємо за унікальною назвою району */ } }
+async function sirenAlerts() {
+  if (!Object.keys(TREE).length || Date.now() - treeAt > 6 * 3600e3) { try { await loadTree(); } catch (e) {} }
   const j = await (await get('https://siren.pp.ua/api/v3/alerts')).json(), m = new Map(); let miss = 0;
   for (const r of j) for (const a of r.activeAlerts || []) {
     const t = atype(a.type); if (!t) continue;
@@ -275,12 +255,12 @@ async function sirenAlerts() { // siren.pp.ua — безкоштовне дзе�
     const i = TREE[String(r.regionId)] || {}, type = r.regionType || i.type; let k = null, p = false;
     if (type === 'State') k = r.regionName;
     else if (type === 'District') { const c = NAMES.get(norm(r.regionName)) || []; k = i.st ? i.st + '|' + r.regionName : c.length === 1 ? c[0] : null; }
-    else if (i.st && i.di) { k = i.st + '|' + i.di; p = true; } // тривога в громаді/місті → показуємо район (напівпрозоро)
+    else if (i.st && i.di) { k = i.st + '|' + i.di; p = true; }
     if (!k || !add(m, k, l, t, p)) miss++;
   }
   return { list: [...m.values()], note: 'siren.pp.ua' + (miss ? ` (поза мапою: ${miss})` : '') };
 }
-async function ubillingAlerts() { // останній запасний варіант: лише області
+async function ubillingAlerts() {
   const j = await (await get('https://ubilling.net.ua/aerialalerts/')).json(), m = new Map();
   for (const [k, v] of Object.entries(j.states)) if (v.alertnow) add(m, k, 'red', 'AIR', false);
   return { list: [...m.values()], note: 'ubilling.net.ua (лише області)' };
@@ -299,16 +279,15 @@ async function pollAlerts() {
   logErr(source);
 }
 
-// Де «живе» регіональний канал
 const KYV = [50.45, 30.52], ODS = [46.48, 30.72], KHR = [49.99, 36.23];
 const CH_HINT = { truexakyiv: KYV, kievinfo_kyiv: KYV, monitoring_kiev: KYV, operativniy_monitor: KYV, VA_Kyiv: KYV, kyivoperativ: KYV, realkiev: KYV, truexazhitomir: [50.25, 28.66], truexadnepr: [48.46, 35.05],
   truexakharkiv: KHR, synegubov: KHR, truexapoltava: [49.59, 34.55], truexazaporozie: [47.84, 35.14], truexakhersonua: [46.64, 32.62], odesatruexa: ODS, odessa_infonews: ODS, lvivtruexa: [49.84, 24.03], chernigivtruexa: [51.5, 31.3] };
-const lastK = {}; // остання ціль, про яку писав канал
+const lastK = {};
 const BULLET = /^[\s▪️•🔹🔸🔻🔺➡️→▶️\-–—*·]+/u;
-const seen = new Set(); // вже оброблені рядки постів
-const SPEED = { shahed: 0.03, jet: 0.06, missile: 0.12, ballistic: 0.4 }, REACH0 = 0.35; // °/хв, запас у градусах
+const seen = new Set();
+const SPEED = { shahed: 0.03, jet: 0.06, missile: 0.12, ballistic: 0.4 }, REACH0 = 0.35;
 
-function addThreat(o) { // той самий об'єкт з кількох каналів зливаємо в один маркер зі списком джерел
+function addThreat(o) {
   const src = { ch: o.ch, id: o.post, key: o.id, t: o.t, text: o.text };
   const join = x => { x.src = x.src || []; if (!x.src.some(a => a.key === src.key)) x.src.push(src); };
   for (const x of threats.values()) {
@@ -383,7 +362,6 @@ async function pollTG(ch) {
         if (k) carry = k; else if (BULLET.test(line) && carry && line.trim().length < 220) k = carry; else if (line.trim() && !BULLET.test(line)) carry = null;
         const key = id + '#' + i;
 
-        // фільтрація сміття, підсумків та хибних тривог
         if (NIGHT.test(line) || NOISE.test(line) || FALSE_ALARM.test(line)) return;
 
         if (k === 'ballistic' && !seen.has(key + 'b') && BALL_CUE.test(line) && line.trim().length > 6 && line.trim().length < 260) {
@@ -414,10 +392,17 @@ async function pollTG(ch) {
           n++; return;
         }
         const o = { id: key, post: id, type: k, t: tms, pts, text: line.trim().slice(0, 300), ch, dest: pts.length === 1 && (DEST.test(line) || (/(?:^|[\s,])(?:на|до)\s/i.test(line) && !/біля|над\s|район|околиц|поблизу|\sв\s|\sу\s/i.test(line))), n: countOf(line), reg: !!(raw[0] && raw[0][2]) };
-        if (CLOSING.test(line)) { closeNear(o); return; }
+        
+        if (CLOSING.test(line)) { 
+          closeNear(o); 
+          o.dead = tms; 
+        }
+
         if (!lastK[ch] || tms >= lastK[ch].t) lastK[ch] = { k, t: tms };
         if (!lastK['*'] || tms >= lastK['*'].t) lastK['*'] = { k, t: tms };
-        addThreat(o); n++;
+        
+        addThreat(o); 
+        n++;
       });
     }
     const title = (h.match(/tgme_channel_info_header_title[^>]*>(?:<[^>]+>)*([^<]+)/) || [])[1];
@@ -445,19 +430,24 @@ function save() {
   } catch (e) {}
 }
 
-// Додаємо розрахунок прозорості (`opacity`) для кожної цілі, якщо до кінця TTL лишилося менше ніж FADE_TIME (3 хвилини)
-const recent = (ms, ref = Date.now()) => [...threats.values()].filter(t => t.t > ref - ms).map(t => {
-  const age = ref - t.t;
-  const timeLeft = TTL - age;
-  let opacity = 1.0;
-  if (timeLeft <= FADE_TIME && timeLeft > 0) {
-    opacity = Math.max(0.3, +(timeLeft / FADE_TIME).toFixed(2));
-  }
-  return { ...t, opacity };
-}).sort((a, b) => a.t - b.t);
+// Розрахунок прозорості: ціль стає напівпрозорою ТІЛЬКИ в останні 3 хвилини перед зникненням (TTL - FADE_TIME)
+const recent = (ms, ref = Date.now()) => [...threats.values()]
+  .filter(t => !t.dead && t.t > ref - ms)
+  .map(t => {
+    const age = ref - t.t;
+    const timeLeft = TTL - age;
+    let opacity = 1.0;
+    
+    // Якщо до кінця TTL залишилось менше або рівно 3 хвилини (і ціль ще не прострочена)
+    if (timeLeft <= FADE_TIME && timeLeft > 0) {
+      opacity = Math.max(0.3, +(timeLeft / FADE_TIME).toFixed(2));
+    }
+    
+    return { ...t, opacity };
+  }).sort((a, b) => a.t - b.t);
 
 const BALL_TTL = 15 * 60e3;
-const ballRecent = (ms = BALL_TTL * 2, ref = Date.now()) => ballWarn.filter(w => w.t > ref - ms).sort((a, b) => a.t - b.t).slice(-40);
+const ballRecent = (ms = BALL_TTL * 2, ref = Date.now()) => ballWarn.filter(w => !w.dead && w.t > ref - ms).sort((a, b) => a.t - b.t).slice(-40);
 const diag = () => ({ geo: geoErr, channels: chStat, health: health() });
 const CITIES = PLACES.filter(p => p.r > 0 && p.n !== 'Київ' && p.n !== 'Севастополь').map(p => ({ n: p.n, la: p.la, lo: p.lo, r: p.r }));
 

@@ -24,6 +24,7 @@ DEFAULT_CHANNELS.splice(0, DEFAULT_CHANNELS.length, ...DEFAULT_CHANNELS.filter((
 let CHANNELS = (process.env.TG_CHANNELS ? process.env.TG_CHANNELS.split(',') : DEFAULT_CHANNELS).map(cleanCh).filter(Boolean);
 const KEEP = 48 * 3600e3;
 const TTL = 10 * 60e3; // ціль зникає з мапи, якщо про неї 10 хвилин нічого не пишуть
+const FADE_TIME = 3 * 60e3; // за скільки до кінця TTL починається затухання (прозорість)
 let DATA = path.join(__dirname, 'data'), TOKEN = process.env.ALERTS_TOKEN || '';
 let alerts = [], ballWarn = [], source = 'очікування', snaps = [], threats = new Map(), geoErr = '';
 const chStat = {}; // стан кожного каналу: { ok, n, at, err, tried, fails, until, busy }
@@ -100,7 +101,7 @@ function loadGaz() {
   }
 }
 
-// розширений список слів з великої літери, які не є топонімами (понад 50 нових термінів)
+// Розширений список стоп-слів топоніміки
 const GAZ_STOP = new Set([
   'група', 'групи', 'групою', 'увага', 'уважно', 'швидко', 'гучно', 'відбій', 'тривога', 'тривоги', 'загроза', 'загрози', 
   'небезпека', 'балістика', 'балістики', 'ракета', 'ракети', 'ракет', 'шахед', 'шахеди', 'шахедів', 'бпла', 'укриття', 
@@ -112,7 +113,7 @@ const GAZ_STOP = new Set([
   'ппо', 'авіація', 'винищувач', 'тривожність', 'напрямок', 'вектор', 'маневр', 'розвороту', 'повторно', 'додатково', 
   'спокійно', 'контролем', 'повітряних', 'збройних', 'сил', 'монітор', 'канал', 'адмін', 'підписка', 'поширення', 
   'репост', 'терміново', 'важливо', 'зафіксовано', 'виліт', 'посадка', 'аеродром', 'базування', 'активність', 'стратегічна',
-  'тактична', 'все вибухи', 'гучний', 'хлопок', 'детонація', 'приліт', 'влучання'
+  'тактична', 'гучний', 'хлопок', 'детонація', 'приліт', 'влучання'
 ].map(stemOf));
 
 // \b у JS не працює з кирилицею, тому «слово-підказка» перед назвою перевіряємо через lookbehind
@@ -187,10 +188,10 @@ function kind(l) {
   if (/шахед|шахеді|бпла|дрон|безпілот|герань|гербер|мопед|молни[яі]|камікадзе|імітатор|shahed|geran/i.test(l)) return 'shahed';
 }
 
-// підсумки «у ніч на …», «за ніч збито …» — це не живі цілі (додано понад 30 нових шаблонів підсумків)
+// Підсумки «у ніч на …», «за ніч збито …» — це не живі цілі
 const NIGHT = /(?:у|за|протягом)\s+ніч\S*|протягом ночі|вранці|зафіксовано влучання|місцях падіння|локаці[яй] влучан|(?<![а-яіїєґ])[ув]ночі|минул\S*\s+ноч|цієї\s+ночі|сьогодні\s+вночі|вчора|за\s+добу|упродовж\s+(?:ночі|доби)|завдал[аио]\s+(?:\S+\s+){0,2}?удар|завдав\s+(?:\S+\s+){0,2}?удар|завдан\S*\s+удар|(?:було|були)\s+(?:випущен|запущен|збит|знищен|завдан|пошкоджен)|випустил[аи]|запустил[аи]\s+по|наслідки|заявив|заявила|за\s+словами|[—–-]\s*зеленськ|зеленськ\S*\s+(?:заявив|повідомив)|дснс|(?:поранених|постраждалих|загиблих)\s+не\s+зафіксован\S*|спалахн\S*\s+(?:\S+\s+){0,2}?(?:автомобіл|авто|будинок|будівл|склад)|момент\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|(?:відео|кадри|фото|запис)\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|вирв(?:а|и|у|і|ою)(?![а-яіїєґ])|після\s+(?:прильот|влучанн)|звіт\s+за|підсумки\s+(?:доби|ночі)|ранкове\s+зведення|зведення\s+генштабу|подробиці\s+атаки|ліквідація\s+наслідків|пожежно-рятувальн|руйнування\s+взанаслідок|пошкоджено\s+приватні|уламки\s+(?:впали|ушкодили|пошкодили)|знайдено\s+боєголовку|роботи\s+з\s+знешкодження|результати\s+роботи\s+ппо|підтверджено\s+знищення|ураження\s+цілі|знищено\s+ворожу\s+техніку/i;
 
-// Службові/рекламні пости каналів (додано понад 40 слів фінансового шуму, реклами та прохань про підписки)
+// Службові/рекламні пости каналів та донати
 const NOISE = /дякуємо|дякую\s|донат|підтримайте|реклам|проєкт|проект\s|monobank|переходьте|читач|довіряйте|прожили|найважч|app\s?store|google\s?play|збір\b|соборка|підписуйтесь|канал\s+друзів|партнерський\s+пост|промокод|знижка|крипта|заробіток|казино|ставки|посилання\s+в\s+шапці|читайте\s+також|джерело:|інсайд|ексклюзив|надіслати\s+новину|наш\s+бот|опитування|ставте\s+лайк|реакції|підпишись|найновіші\s+новини|офіційний\s+мерч|роззіграш|вигравай|безкоштовно|рекомендація|вже\s+на\s+каналі|подробиці\s+посилання/i;
 
 // Перевірка на хибні тривоги: "не підтвердилось", "помилкова ціль"
@@ -212,7 +213,6 @@ function countOf(l) {
   return n >= 2 && n <= 99 ? n : undefined;
 }
 
-// Завершення загрози (розширено додатковими варіаціями відбоїв)
 const CLOSING = /збит|збив|знищен|мінус|зник|відбій|відбито|покинув|покинули|вийшов за межі|вийшли за межі|ціль втрачен|локаційно\s+втрачено|впав|розбився|припинив\s+існування|немає\s+цілей|чисто/i;
 const dist = (a, b) => Math.hypot(a[0] - b[0], (a[1] - b[1]) * Math.cos(a[0] * Math.PI / 180));
 
@@ -299,7 +299,7 @@ async function pollAlerts() {
   logErr(source);
 }
 
-// Де «живе» регіональний канал: допомагає відрізнити Юріївку на Дніпропетровщині від однойменних сіл
+// Де «живе» регіональний канал
 const KYV = [50.45, 30.52], ODS = [46.48, 30.72], KHR = [49.99, 36.23];
 const CH_HINT = { truexakyiv: KYV, kievinfo_kyiv: KYV, monitoring_kiev: KYV, operativniy_monitor: KYV, VA_Kyiv: KYV, kyivoperativ: KYV, realkiev: KYV, truexazhitomir: [50.25, 28.66], truexadnepr: [48.46, 35.05],
   truexakharkiv: KHR, synegubov: KHR, truexapoltava: [49.59, 34.55], truexazaporozie: [47.84, 35.14], truexakhersonua: [46.64, 32.62], odesatruexa: ODS, odessa_infonews: ODS, lvivtruexa: [49.84, 24.03], chernigivtruexa: [51.5, 31.3] };
@@ -307,6 +307,7 @@ const lastK = {}; // остання ціль, про яку писав кана�
 const BULLET = /^[\s▪️•🔹🔸🔻🔺➡️→▶️\-–—*·]+/u;
 const seen = new Set(); // вже оброблені рядки постів
 const SPEED = { shahed: 0.03, jet: 0.06, missile: 0.12, ballistic: 0.4 }, REACH0 = 0.35; // °/хв, запас у градусах
+
 function addThreat(o) { // той самий об'єкт з кількох каналів зливаємо в один маркер зі списком джерел
   const src = { ch: o.ch, id: o.post, key: o.id, t: o.t, text: o.text };
   const join = x => { x.src = x.src || []; if (!x.src.some(a => a.key === src.key)) x.src.push(src); };
@@ -314,16 +315,15 @@ function addThreat(o) { // той самий об'єкт з кількох ка�
     if (x.type !== o.type || x.dead || Math.abs(x.t - o.t) > TTL) continue;
     if (dist(x.pts[x.pts.length - 1], o.pts[o.pts.length - 1]) < 0.25) {
       join(x);
-      if (o.t >= x.t) { x.t = o.t; if (!o.dest) { x.pts = o.pts; x.reg = o.reg; } x.text = o.text; x.ch = o.ch; if (o.n) x.n = o.n; } // свіжіше повідомлення — нова позиція, кількість і оновлений таймер (але «курс на X» позицію не переносить)
+      if (o.t >= x.t) { x.t = o.t; if (!o.dest) { x.pts = o.pts; x.reg = o.reg; } x.text = o.text; x.ch = o.ch; if (o.n) x.n = o.n; }
       else if (o.n && !x.n) x.n = o.n;
       return;
     }
   }
-  if (o.dest) { // лише напрямок («→Житомир»): не «телепортуємо» маркер у пункт призначення, а продовжуємо курс найближчої свіжої цілі того ж типу
+  if (o.dest) {
     let best = null, bd = 4;
     for (const x of threats.values()) {
       if (x.type !== o.type || x.dead || Math.abs(x.t - o.t) > TTL) continue;
-      // ціль не могла відлетіти далі, ніж дозволяє її швидкість за час між повідомленнями (інакше «БпЛА на Козин» чіпляється до шахеда за 400 км)
       const d = dist(x.pts[0], o.pts[0]), reach = REACH0 + (SPEED[o.type] || SPEED.shahed) * Math.abs(o.t - x.t) / 60e3;
       if (d < bd && d <= reach) { bd = d; best = x; }
     }
@@ -333,11 +333,11 @@ function addThreat(o) { // той самий об'єкт з кількох ка�
       else if (o.n && !best.n) best.n = o.n;
       return;
     }
-    return; // «курсом на X», а самої цілі ще нема на мапі — місце, ДО ЯКОГО летить, не показуємо як її позицію
+    return;
   }
   o.src = [src]; threats.set(o.id, o);
 }
-function closeNear(o) { // «збито / мінус / зникла» біля місця — прибираємо найближчу свіжу ціль того ж типу
+function closeNear(o) {
   let best = null, bd = 0.6;
   for (const x of threats.values()) {
     if (x.type !== o.type || x.dead || x.t > o.t || o.t - x.t > TTL) continue;
@@ -346,7 +346,7 @@ function closeNear(o) { // «збито / мінус / зникла» біля �
   }
   if (best) best.dead = o.t;
 }
-// Дзеркала Telegram: якщо t.me недоступний (так уже бувало), пробуємо telegram.me та tx.me
+
 const TG_HOSTS = ['t.me', 'telegram.me', 'tx.me']; let tgHost = 0;
 async function tgGet(ch) {
   let last;
@@ -357,7 +357,7 @@ async function tgGet(ch) {
       if (r.ok) { tgHost = hi; return r; }
       last = new Error('HTTP ' + r.status); last.retry = (+r.headers.get('retry-after') || 0) * 1000;
       if (r.status === 404) last.nopreview = true;
-      if (r.status === 429 || r.status === 404) throw last; // ліміт чи немає каналу — дзеркала не допоможуть
+      if (r.status === 429 || r.status === 404) throw last;
     } catch (e) { if (e === last) throw e; last = e; }
   }
   throw last;
@@ -376,28 +376,27 @@ async function pollTG(ch) {
       const m = p.match(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/);
       if (!id || !ts || !m) continue;
       const text = m[1].replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#0?39;/g, "'").replace(/&gt;/g, '>').replace(/&lt;/g, '<');
-      let carry = null; // «🛸 БпЛА:» і далі рядки-маркери з місцями
+      let carry = null;
       const tms = Date.parse(ts);
       text.split('\n').forEach((line, i) => {
         let k = kind(line);
         if (k) carry = k; else if (BULLET.test(line) && carry && line.trim().length < 220) k = carry; else if (line.trim() && !BULLET.test(line)) carry = null;
         const key = id + '#' + i;
 
-        // перевірка сміття, підсумків та спростувань тривог
+        // фільтрація сміття, підсумків та хибних тривог
         if (NIGHT.test(line) || NOISE.test(line) || FALSE_ALARM.test(line)) return;
 
-        if (k === 'ballistic' && !seen.has(key + 'b') && BALL_CUE.test(line) && line.trim().length > 6 && line.trim().length < 260) { // банер «балістична загроза» — навіть якщо місце не названо
+        if (k === 'ballistic' && !seen.has(key + 'b') && BALL_CUE.test(line) && line.trim().length > 6 && line.trim().length < 260) {
           seen.add(key + 'b');
           if (CLOSING.test(line)) { for (const w of ballWarn) if (w.t <= tms && !w.dead) w.dead = tms; }
           else if (!ballWarn.some(w => w.key === key)) ballWarn.push({ key, post: id, ch, t: tms, text: line.trim().slice(0, 220) });
         }
 
-        if (k && CLOSING.test(line) && /відбій|відбою/i.test(line) && !placesRaw(line).length) { // «Відбій балістики / шахедів» без місця — знімаємо живі цілі цього типу з цього каналу
+        if (k && CLOSING.test(line) && /відбій|відбою/i.test(line) && !placesRaw(line).length) {
           if (!seen.has(key + 'c')) { seen.add(key + 'c'); for (const x of threats.values()) if (x.type === k && !x.dead && x.t <= tms && tms - x.t <= TTL && (x.src || []).some(a => a.ch === ch)) x.dead = tms; }
           return;
         }
         const raw = placesRaw(line, CH_HINT[ch]);
-        // «на Київ з боку Чернігова»: перше місце — куди летить, останнє — звідки. Ціль має стояти там, ЗВІДКИ летить, а курс — на пункт призначення
         if (raw.length >= 2) {
           const bef = p => line.slice(Math.max(0, p[3] - 22), p[3]);
           const isTo = p => /(?:^|[\s(])(?:на|до|→|➡️?|напрямку|напрямок|курс\S*\s+на)\s*$/i.test(bef(raw[0])) && p === raw[0];
@@ -407,11 +406,10 @@ async function pollTG(ch) {
         const pts = raw.map(p => [p[0], p[1]]);
         if (!pts.length || seen.has(key)) return;
         const L = lastK[ch] || lastK['*'];
-        // «Далі курсом на Бориспіль», «→Бориспіль/Київ» без слова БпЛА — беремо тип з попереднього повідомлення цього каналу
         if (!k && L && tms >= L.t && tms - L.t <= TTL && /курс|далі|напрямк|→|➡|прямує|рухаєт|рухаютьс/i.test(line) && !/тривог|відбій/i.test(line)) k = L.k;
         if (!k) return;
         seen.add(key);
-        if (k === 'boom') { // вибухи: окрема позначка на кожне назване місце (без «курсу» і лічильника)
+        if (k === 'boom') {
           raw.forEach((p, i) => addThreat({ id: key + 'p' + i, post: id, type: 'boom', t: tms, pts: [[p[0], p[1]]], text: line.trim().slice(0, 300), ch, dest: false, reg: !!p[2] }));
           n++; return;
         }
@@ -426,12 +424,12 @@ async function pollTG(ch) {
     Object.assign(st, { ok: true, n: parts.length, at: Date.now(), err: '', title: title ? title.trim() : ch, tried: true, fails: 0, nop: 0, dead: false, until: 0 });
     lastGood = Date.now();
   } catch (e) {
-    const fails = (st.fails || 0) + 1; // після 2-ї поспіль помилки (або 429 з Retry-After) канал відпочиває: 1, 2, 4 … до 5 хв
-    const nop = e.nopreview ? (st.nop || 0) + 1 : 0; // скільки разів поспіль у каналу не було публічного перегляду
+    const fails = (st.fails || 0) + 1;
+    const nop = e.nopreview ? (st.nop || 0) + 1 : 0;
     const dead = nop >= DEAD_AFTER;
     const back = dead ? DEAD_RETRY : e.retry || (fails >= 2 ? Math.min(5 * 60e3, POLL_EVERY * 2 ** (fails - 1)) : 0);
     Object.assign(st, { ok: false, err: dead ? 'недоступний (немає публічного перегляду), повтор раз на 6 год' : e.message, tried: true, fails, nop, dead, until: back ? Date.now() + (dead ? back : Math.min(back, 10 * 60e3)) : 0 });
-    if (!dead || nop === DEAD_AFTER) logErr('канал ' + ch + ': ' + e.message + (dead ? ' — позначено недоступним, наступна спроба через 6 год' : back ? ' (пауза ' + Math.round(back / 1000) + ' с)' : ''));
+    if (!dead || nop === DEAD_AFTER) logErr('канал ' + ch + ': ' + e.message + (dead ? ' — позначено недоступним' : ''));
   } finally { st.busy = false; }
 }
 
@@ -440,22 +438,31 @@ function save() {
   for (const [k, v] of threats) if (v.t < cut) threats.delete(k);
   ballWarn = ballWarn.filter(w => w.t >= cut);
   while (snaps.length > 1 && snaps[1].t < cut) snaps.shift();
-  try { // асинхронно і через тимчасовий файл: цикл подій не блокується, а обрив посеред запису не псує history.json
+  try {
     fs.mkdirSync(DATA, { recursive: true });
     const f = path.join(DATA, 'history.json'), tmp = f + '.tmp';
     fs.writeFile(tmp, JSON.stringify({ snaps, lastGood, threats: [...threats.values()], ballWarn }), e => { if (!e) fs.rename(tmp, f, () => {}); });
   } catch (e) {}
 }
-const recent = (ms, ref = Date.now()) => [...threats.values()].filter(t => t.t > ref - ms).sort((a, b) => a.t - b.t);
+
+// Додаємо розрахунок прозорості (`opacity`) для кожної цілі, якщо до кінця TTL лишилося менше ніж FADE_TIME (3 хвилини)
+const recent = (ms, ref = Date.now()) => [...threats.values()].filter(t => t.t > ref - ms).map(t => {
+  const age = ref - t.t;
+  const timeLeft = TTL - age;
+  let opacity = 1.0;
+  if (timeLeft <= FADE_TIME && timeLeft > 0) {
+    opacity = Math.max(0.3, +(timeLeft / FADE_TIME).toFixed(2));
+  }
+  return { ...t, opacity };
+}).sort((a, b) => a.t - b.t);
+
 const BALL_TTL = 15 * 60e3;
 const ballRecent = (ms = BALL_TTL * 2, ref = Date.now()) => ballWarn.filter(w => w.t > ref - ms).sort((a, b) => a.t - b.t).slice(-40);
 const diag = () => ({ geo: geoErr, channels: chStat, health: health() });
 const CITIES = PLACES.filter(p => p.r > 0 && p.n !== 'Київ' && p.n !== 'Севастополь').map(p => ({ n: p.n, la: p.la, lo: p.lo, r: p.r }));
 
-// ---- Керування списком каналів з інтерфейсу (зберігається в channels.json у теці даних) ----
 const CH_OK = /^[A-Za-z0-9_]{4,64}$/;
 const uniq = a => [...new Set(a.map(cleanCh).filter(c => CH_OK.test(c)))];
-let onChannels = () => {};
 function setChannels(list) {
   const next = uniq(list); if (!next.length) return false;
   CHANNELS.length = 0; CHANNELS.push(...next);
@@ -463,11 +470,10 @@ function setChannels(list) {
   const fresh = CHANNELS.filter(c => !chStat[c]);
   CHANNELS.forEach(c => { chStat[c] = chStat[c] || { ok: false, n: 0 }; });
   try { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(path.join(DATA, 'channels.json'), JSON.stringify({ channels: CHANNELS })); } catch (e) {}
-  fresh.forEach((c, i) => setTimeout(() => pollTG(c), 400 * (i + 1))); // нові канали опитуємо одразу
+  fresh.forEach((c, i) => setTimeout(() => pollTG(c), 400 * (i + 1)));
   return true;
 }
-// Редагувати налаштування можна лише з самого комп'ютера. Через тунель/проксі (cloudflared, ngrok, nginx) зʼєднання теж приходить з 127.0.0.1,
-// тому додатково перевіряємо: немає проксі-заголовків, Host — localhost/127.0.0.1, а Origin (якщо є) збігається з Host.
+
 const PROXY_H = ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded', 'x-real-ip', 'cf-connecting-ip', 'cf-ray', 'via'];
 const isLocal = req => /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || '')
   && !PROXY_H.some(h => req.headers[h])
@@ -505,7 +511,7 @@ const srv = http.createServer((req, res) => {
 exports.setFetch = f => { F = f; };
 exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.HOST || '0.0.0.0') => new Promise(ok => {
   if (dataDir) DATA = dataDir;
-  for (const d of [DATA, process.cwd(), process.env.PORTABLE_EXECUTABLE_DIR, __dirname]) { // config.json: { "alertsToken": "...", "channels": [...] }
+  for (const d of [DATA, process.cwd(), process.env.PORTABLE_EXECUTABLE_DIR, __dirname]) {
     try {
       const c = JSON.parse(fs.readFileSync(path.join(d || '.', 'config.json')));
       if (!TOKEN && c.alertsToken && !/^ВАШ_/.test(c.alertsToken)) TOKEN = c.alertsToken;
@@ -513,21 +519,27 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
       if (+c.pollSeconds >= 15 && +c.pollSeconds <= 300) POLL_EVERY = +c.pollSeconds * 1000;
     } catch (e) {}
   }
-  try { const c = JSON.parse(fs.readFileSync(path.join(DATA, 'channels.json'))); if (!process.env.TG_CHANNELS && Array.isArray(c.channels) && uniq(c.channels).length) CHANNELS = uniq(c.channels); } catch (e) {} // вибір з інтерфейсу — найвищий пріоритет після змінної середовища
+  try { const c = JSON.parse(fs.readFileSync(path.join(DATA, 'channels.json'))); if (!process.env.TG_CHANNELS && Array.isArray(c.channels) && uniq(c.channels).length) CHANNELS = uniq(c.channels); } catch (e) {}
   try { loadGaz(); } catch (e) { logErr('settlements.json: ' + e.message); }
   try { loadGeo(); } catch (e) { geoErr = 'raions.json: ' + e.message; console.error(geoErr); logErr(geoErr); }
-  try { const h = JSON.parse(fs.readFileSync(path.join(DATA, 'history.json'))); snaps = h.snaps || []; lastGood = h.lastGood || 0; (h.threats || []).filter(t => !NIGHT.test(t.text || '') && !NOISE.test(t.text || '') && !FALSE_ALARM.test(t.text || '')).forEach(t => { threats.set(t.id, t); seen.add(t.id); (t.src || []).forEach(a => seen.add(a.key)); }); ballWarn = (h.ballWarn || []).filter(w => !NIGHT.test(w.text || '') && !NOISE.test(w.text || '') && !FALSE_ALARM.test(w.text || '') && BALL_CUE.test(w.text || '')); ballWarn.forEach(w => seen.add(w.key + 'b')); } catch (e) {}
+  try {
+    const h = JSON.parse(fs.readFileSync(path.join(DATA, 'history.json')));
+    snaps = h.snaps || []; lastGood = h.lastGood || 0;
+    (h.threats || []).filter(t => !NIGHT.test(t.text || '') && !NOISE.test(t.text || '') && !FALSE_ALARM.test(t.text || '')).forEach(t => { threats.set(t.id, t); seen.add(t.id); (t.src || []).forEach(a => seen.add(a.key)); });
+    ballWarn = (h.ballWarn || []).filter(w => !NIGHT.test(w.text || '') && !NOISE.test(w.text || '') && !FALSE_ALARM.test(w.text || '') && BALL_CUE.test(w.text || ''));
+    ballWarn.forEach(w => seen.add(w.key + 'b'));
+  } catch (e) {}
   CHANNELS.forEach(c => { chStat[c] = chStat[c] || { ok: false, n: 0 }; });
   let rot = 0;
-  const pollNext = () => { // один канал за раз, рівномірно протягом POLL_EVERY; зайняті й ті, що «відпочивають», пропускаємо
+  const pollNext = () => {
     for (let i = 0; i < CHANNELS.length; i++) {
       const ch = CHANNELS[rot++ % CHANNELS.length], st = chStat[ch];
       if (!st.busy && !((st.until || 0) > Date.now())) return pollTG(ch);
     }
   };
-  const warmup = async () => { for (const ch of CHANNELS) { await pollTG(ch); await sleep(700); } }; // перший прохід — з паузами
+  const warmup = async () => { for (const ch of CHANNELS) { await pollTG(ch); await sleep(700); } };
   pollAlerts().then(save); setInterval(pollAlerts, 30e3); setInterval(save, 60e3);
-  const tick = () => { pollNext(); setTimeout(tick, Math.max(1200, Math.round(POLL_EVERY / Math.max(1, CHANNELS.length)))); }; // крок залежить від кількості каналів (її можна міняти з інтерфейсу)
+  const tick = () => { pollNext(); setTimeout(tick, Math.max(1200, Math.round(POLL_EVERY / Math.max(1, CHANNELS.length)))); };
   warmup().then(tick);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });

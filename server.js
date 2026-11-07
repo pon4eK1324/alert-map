@@ -3,22 +3,43 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const { PLACES } = require('./places');
 // Публічні Telegram-канали (t.me/s/...). Можна змінити у config.json: { "channels": ["kpszsu", "..."] } або змінною TG_CHANNELS.
 const DEFAULT_CHANNELS = [
-  // загальнонаціональні та офіційні
-  'kpszsu', 'kudy_letyt', 'UkraineRadar_24_7', 'povitryanatrivogaaa', 'eRadarrua', 'rlsukr', 'raketa_trevoga', 'monikppy', 'deraketaua',
-  // мережа «Труха» — по областях і містах
-  'truexakyiv', 'truexanewsua', 'truexazhitomir', 'truexadnepr', 'truexakharkiv', 'truexapoltava', 'truexazaporozie', 'truexakhersonua', 'odesatruexa', 'lvivtruexa', 'chernigivtruexa',
-  // Київ, Одеса, Харків — оперативні канали й адміністрації
-  'kievinfo_kyiv', 'monitoring_kiev', 'operativniy_monitor', 'VA_Kyiv', 'synegubov', 'odessa_infonews', 'kyivoperativ', 'operativnoZSU', 'realkiev',
-  // додано: загальноукраїнські монітори
-  'vanek_nikolaev', 'monitor_ukr', 'mon1tor_ua', 'radar_ukr', 'lachenwrite', 'trivoga_rada', 'povitryanatrivoga_ua', 'raketa_shahed',
-  // Київ і північ
-  'kyiv_info', 'real_kyiv', 'zhytomyr_info', 'chernihiv_operativ', 'sumy_monitor',
-  // південь і Причорномор'я
-  'odesa_info', 'odessa_good', 'mykolaiv_monitor', 'kherson_operativ', 'zaporozhye_info',
-  // схід
-  'kharkiv_live', 'trueha_kharkiv', 'dnipro_operativ', 'dnipro_info', 'poltava_monitor', 'kremenchuk_operativ',
-  // захід і центр
-  'kyiv_m0nitoring', 'vinnytsia_info', 'cherkasy_live', 'kropyvnytskyi_monitor', 'lviv_live', 'khmelnytskyi_operativ', 'rivne_operativ'];
+  // Повітряні Сили та Офіційні джерела
+  'kpszsu', 'povitryanatrivogaaa', 'trivoga_rada', 'VA_Kyiv', 'synegubov', 'kimmarat',
+
+  // Загальнонаціональні монітори й оперативні канали
+  'vanek_nikolaev', 'kudy_letyt', 'UkraineRadar_24_7', 'eRadarrua', 'rlsukr', 
+  'raketa_trevoga', 'monikppy', 'deraketaua', 'monitor_ukr', 'mon1tor_ua', 
+  'radar_ukr', 'lachenwrite', 'povitryanatrivoga_ua', 'raketa_shahed', 
+  'operativnoZSU', 'operativniy_monitor',
+
+  // Київ та Київщина
+  'kievinfo_kyiv', 'monitoring_kiev', 'kyivoperativ', 'realkiev', 'kyiv_info', 
+  'real_kyiv', 'kyiv_m0nitoring',
+
+  // Мережа «Труха»
+  'truexakyiv', 'truexanewsua', 'truexazhitomir', 'truexadnepr', 'truexakharkiv', 
+  'truexapoltava', 'truexazaporozie', 'truexakhersonua', 'odesatruexa', 'lvivtruexa', 
+  'chernigivtruexa',
+
+  // Північ (Чернігів, Суми, Житомир)
+  'zhytomyr_info', 'chernihiv_operativ', 'sumy_monitor', 'sumy_live', 'chernihiv_live',
+
+  // Південь (Миколаїв, Одеса, Херсон, Запоріжжя)
+  'odesa_info', 'odessa_infonews', 'odessa_good', 'mykolaiv_monitor', 'mykolaiv_live',
+  'kherson_operativ', 'kherson_live', 'zaporozhye_info', 'zaporozhye_live',
+
+  // Схід (Харків, Дніпро, Запоріжжя, Донеччина, Луганщина)
+  'kharkiv_live', 'dnipro_operativ', 'dnipro_info', 'poltava_monitor', 
+  'kremenchuk_operativ', 'donetsk_operativ',
+
+  // Центр (Вінниця, Черкаси, Кропивницький, Полтава)
+  'vinnytsia_info', 'cherkasy_live', 'kropyvnytskyi_monitor', 'vinnytsia_live', 
+  'cherkasy_monitor',
+
+  // Захід (Львів, Хмельницький, Рівне, Франківськ, Волинь, Закарпаття, Буковина)
+  'lviv_live', 'khmelnytskyi_operativ', 'rivne_operativ', 'lviv_monitor', 
+  'frankivsk_live', 'volyn_live', 'uzhhorod_live', 'chernivtsi_live'
+];
 const cleanCh = c => String(c).trim().replace(/^.*t\.me\/(s\/)?/, '').replace(/^@/, '').replace(/[/?#].*$/, '');
 DEFAULT_CHANNELS.splice(0, DEFAULT_CHANNELS.length, ...DEFAULT_CHANNELS.filter((c, i, a) => a.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i));
 let CHANNELS = (process.env.TG_CHANNELS ? process.env.TG_CHANNELS.split(',') : DEFAULT_CHANNELS).map(cleanCh).filter(Boolean);

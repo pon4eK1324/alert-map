@@ -3,43 +3,22 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const { PLACES } = require('./places');
 // Публічні Telegram-канали (t.me/s/...). Можна змінити у config.json: { "channels": ["kpszsu", "..."] } або змінною TG_CHANNELS.
 const DEFAULT_CHANNELS = [
-  // Повітряні Сили та Офіційні джерела
-  'kpszsu', 'povitryanatrivogaaa', 'trivoga_rada', 'VA_Kyiv', 'synegubov', 'kimmarat',
-
-  // Загальнонаціональні монітори й оперативні канали
-  'vanek_nikolaev', 'kudy_letyt', 'UkraineRadar_24_7', 'eRadarrua', 'rlsukr', 
-  'raketa_trevoga', 'monikppy', 'deraketaua', 'monitor_ukr', 'mon1tor_ua', 
-  'radar_ukr', 'lachenwrite', 'povitryanatrivoga_ua', 'raketa_shahed', 
-  'operativnoZSU', 'operativniy_monitor',
-
-  // Київ та Київщина
-  'kievinfo_kyiv', 'monitoring_kiev', 'kyivoperativ', 'realkiev', 'kyiv_info', 
-  'real_kyiv', 'kyiv_m0nitoring',
-
-  // Мережа «Труха»
-  'truexakyiv', 'truexanewsua', 'truexazhitomir', 'truexadnepr', 'truexakharkiv', 
-  'truexapoltava', 'truexazaporozie', 'truexakhersonua', 'odesatruexa', 'lvivtruexa', 
-  'chernigivtruexa',
-
-  // Північ (Чернігів, Суми, Житомир)
-  'zhytomyr_info', 'chernihiv_operativ', 'sumy_monitor', 'sumy_live', 'chernihiv_live',
-
-  // Південь (Миколаїв, Одеса, Херсон, Запоріжжя)
-  'odesa_info', 'odessa_infonews', 'odessa_good', 'mykolaiv_monitor', 'mykolaiv_live',
-  'kherson_operativ', 'kherson_live', 'zaporozhye_info', 'zaporozhye_live',
-
-  // Схід (Харків, Дніпро, Запоріжжя, Донеччина, Луганщина)
-  'kharkiv_live', 'dnipro_operativ', 'dnipro_info', 'poltava_monitor', 
-  'kremenchuk_operativ', 'donetsk_operativ',
-
-  // Центр (Вінниця, Черкаси, Кропивницький, Полтава)
-  'vinnytsia_info', 'cherkasy_live', 'kropyvnytskyi_monitor', 'vinnytsia_live', 
-  'cherkasy_monitor',
-
-  // Захід (Львів, Хмельницький, Рівне, Франківськ, Волинь, Закарпаття, Буковина)
-  'lviv_live', 'khmelnytskyi_operativ', 'rivne_operativ', 'lviv_monitor', 
-  'frankivsk_live', 'volyn_live', 'uzhhorod_live', 'chernivtsi_live'
-];
+  // загальнонаціональні та офіційні
+  'kpszsu', 'kudy_letyt', 'UkraineRadar_24_7', 'povitryanatrivogaaa', 'eRadarrua', 'rlsukr', 'raketa_trevoga', 'monikppy', 'deraketaua',
+  // мережа «Труха» — по областях і містах
+  'truexakyiv', 'truexanewsua', 'truexazhitomir', 'truexadnepr', 'truexakharkiv', 'truexapoltava', 'truexazaporozie', 'truexakhersonua', 'odesatruexa', 'lvivtruexa', 'chernigivtruexa',
+  // Київ, Одеса, Харків — оперативні канали й адміністрації
+  'kievinfo_kyiv', 'monitoring_kiev', 'operativniy_monitor', 'VA_Kyiv', 'synegubov', 'odessa_infonews', 'kyivoperativ', 'operativnoZSU', 'realkiev',
+  // додано: загальноукраїнські монітори
+  'vanek_nikolaev', 'monitor_ukr', 'mon1tor_ua', 'radar_ukr', 'lachenwrite', 'trivoga_rada', 'povitryanatrivoga_ua', 'raketa_shahed',
+  // Київ і північ
+  'kyiv_info', 'real_kyiv', 'zhytomyr_info', 'chernihiv_operativ', 'sumy_monitor',
+  // південь і Причорномор'я
+  'odesa_info', 'odessa_good', 'mykolaiv_monitor', 'kherson_operativ', 'zaporozhye_info',
+  // схід
+  'kharkiv_live', 'trueha_kharkiv', 'dnipro_operativ', 'dnipro_info', 'poltava_monitor', 'kremenchuk_operativ',
+  // захід і центр
+  'kyiv_m0nitoring', 'vinnytsia_info', 'cherkasy_live', 'kropyvnytskyi_monitor', 'lviv_live', 'khmelnytskyi_operativ', 'rivne_operativ'];
 const cleanCh = c => String(c).trim().replace(/^.*t\.me\/(s\/)?/, '').replace(/^@/, '').replace(/[/?#].*$/, '');
 DEFAULT_CHANNELS.splice(0, DEFAULT_CHANNELS.length, ...DEFAULT_CHANNELS.filter((c, i, a) => a.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i));
 let CHANNELS = (process.env.TG_CHANNELS ? process.env.TG_CHANNELS.split(',') : DEFAULT_CHANNELS).map(cleanCh).filter(Boolean);
@@ -120,8 +99,22 @@ function loadGaz() {
     a.push({ n: r[0], la: r[1], lo: r[2], pop: r[3] || 0, kk: kindKey });
   }
 }
-// слова, які пишуться з великої літери в оголошеннях, але не є назвами місць
-const GAZ_STOP = new Set('група групи групою увага уважно швидко гучно відбій тривога тривоги загроза загрози небезпека балістика балістики ракета ракети ракет шахед шахеди шахедів бпла укриття новини україна росія росії курсом напрямку реактивний реактивні молнія молнії ціль цілі збито збиття вибух вибухи пуск пуски сидимо оновлення обережно повітряна повітряні ударні ударний можливо можлива ймовірно скоріше далі область області районі район повз біля через'.split(' ').map(stemOf));
+
+// розширений список слів з великої літери, які не є топонімами (понад 50 нових термінів)
+const GAZ_STOP = new Set([
+  'група', 'групи', 'групою', 'увага', 'уважно', 'швидко', 'гучно', 'відбій', 'тривога', 'тривоги', 'загроза', 'загрози', 
+  'небезпека', 'балістика', 'балістики', 'ракета', 'ракети', 'ракет', 'шахед', 'шахеди', 'шахедів', 'бпла', 'укриття', 
+  'новини', 'україна', 'росія', 'росії', 'курсом', 'напрямку', 'реактивний', 'реактивні', 'молнія', 'молнії', 'ціль', 
+  'цілі', 'збито', 'збиття', 'вибух', 'вибухи', 'пуск', 'пуски', 'сидимо', 'оновлення', 'обережно', 'повітряна', 'повітряні', 
+  'ударні', 'ударний', 'можливо', 'можлива', 'ймовірно', 'скоріше', 'далі', 'область', 'області', 'районі', 'район', 
+  'повз', 'біля', 'через', 'попередня', 'інформація', 'підтвердження', 'локаційно', 'втрачено', 'чисто', 'фіксація', 
+  'спостереження', 'перебувайте', 'безпеці', 'безпека', 'тримайтесь', 'працює', 'працюють', 'наші', 'сили', 'оборони', 
+  'ппо', 'авіація', 'винищувач', 'тривожність', 'напрямок', 'вектор', 'маневр', 'розвороту', 'повторно', 'додатково', 
+  'спокійно', 'контролем', 'повітряних', 'збройних', 'сил', 'монітор', 'канал', 'адмін', 'підписка', 'поширення', 
+  'репост', 'терміново', 'важливо', 'зафіксовано', 'виліт', 'посадка', 'аеродром', 'базування', 'активність', 'стратегічна',
+  'тактична', 'все вибухи', 'гучний', 'хлопок', 'детонація', 'приліт', 'влучання'
+].map(stemOf));
+
 // \b у JS не працює з кирилицею, тому «слово-підказка» перед назвою перевіряємо через lookbehind
 const CUE = /(?:(?<![а-яіїєґ'’])(?:на|до|повз|біля|через|над|від|курс\S*|напрямк\S*|район\S*|р-н\S*|в|у|з|із)|→|➡)\s*(?:\S{1,12}\s+)?$/i;
 function gazPlaces(line, covered, anchors, hint) { // → [[індекс, широта, довгота, false], …]
@@ -179,9 +172,13 @@ function placesRaw(line, hint) { // [[широта, довгота, чи_це_о
   return out;
 }
 const places = line => placesRaw(line).map(p => [p[0], p[1]]);
+
+// Фільтр заперечення вибухів: "вибухів не було", "тихо, без прильотів"
+const BOOM_NEGATION = /(?:немає|без|не\s+чу\S*|тихо|відсутн\S*|наразі\s+спокійно)\s+(?:\S+\s+){0,3}?(?:вибух|влучан|прильот|хлопк)|(?:вибух|влучан|прильот|хлопк)\S*\s+(?:немає|не\s+було|не\s+зафіксовано|відсутн|не\s+чути)/i;
+
 function kind(l) {
-  // вибухи / прильоти — окремий тип: значок там, де чути вибухи
-  if (/вибух|прильот|влучанн|влучив|влучили|детонаці|(?:чути|чутно|гучн\S*)\s+хлопк/i.test(l) && !/(?:немає|без|не\s+чу\S*|тихо)\s+(?:\S+\s+)?вибух|вибух\S*\s+(?:немає|не\s|відсутн)/i.test(l)) return 'boom';
+  // вибухи / прильоти — окремий тип: значок там, де чути вибухи (із запереченням хибних вибухів)
+  if (/вибух|прильот|влучанн|влучив|влучили|детонаці|(?:чути|чутно|гучн\S*)\s+хлопк/i.test(l) && !BOOM_NEGATION.test(l)) return 'boom';
   // балістика (разом з аеробалістикою «Кинджал», КН-23/25, С-300/С-400 по наземних цілях)
   if (/балістик|балістичн|аеробаліст|іскандер|кн-?2[345]|х-?47|кинджал|кінжал|фатех|фатх|точка-?у|оперативно-тактичн|(?:ракет\S*|пуск\S*|удар\S*)\s+(?:зрк\s+)?с-?[34]00|с-?[34]00\s+(?:на|по|курсом)/i.test(l)) return 'ballistic';
   if (/крилат|ракет|калібр|х-?101|х-?555|х-?22|х-?59|х-?69|циркон|онікс|буревісник|орєшнік|орешнік/i.test(l)) return 'missile';
@@ -189,10 +186,16 @@ function kind(l) {
   if (/реактивн\S*\s+(?:\S+\s+){0,2}?(?:шахед|бпла|дрон|безпілот|герань|геран|ударн)|геран[ьі]?[-\s]?3|(?<![a-z])jet[-\s]?(?:shahed|geran|drone)|шахед\S*[-\s]?3\d\d/i.test(l) && !/артилері|рсзв|град\b|смерч|ураган/i.test(l)) return 'jet';
   if (/шахед|шахеді|бпла|дрон|безпілот|герань|гербер|мопед|молни[яі]|камікадзе|імітатор|shahed|geran/i.test(l)) return 'shahed';
 }
-// підсумки «у ніч на …», «за ніч збито …» — це не живі цілі
-const NIGHT = /(?:у|за|протягом)\s+ніч\S*|протягом ночі|вранці|зафіксовано влучання|місцях падіння|локаці[яй] влучан|(?<![а-яіїєґ])[ув]ночі|минул\S*\s+ноч|цієї\s+ночі|сьогодні\s+вночі|вчора|за\s+добу|упродовж\s+(?:ночі|доби)|завдал[аио]\s+(?:\S+\s+){0,2}?удар|завдав\s+(?:\S+\s+){0,2}?удар|завдан\S*\s+удар|(?:було|були)\s+(?:випущен|запущен|збит|знищен|завдан|пошкоджен)|випустил[аи]|запустил[аи]\s+по|наслідки|заявив|заявила|за\s+словами|[—–-]\s*зеленськ|зеленськ\S*\s+(?:заявив|повідомив)|дснс|(?:поранених|постраждалих|загиблих)\s+не\s+зафіксован\S*|спалахн\S*\s+(?:\S+\s+){0,2}?(?:автомобіл|авто|будинок|будівл|склад)|момент\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|(?:відео|кадри|фото|запис)\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|вирв(?:а|и|у|і|ою)(?![а-яіїєґ])|після\s+(?:прильот|влучанн)/i;
-// Службові/рекламні пости каналів («дякуємо, що читаєте», донати, реклама) — не повідомлення про цілі, навіть якщо в них є слово «балістична»
-const NOISE = /дякуємо|дякую\s|донат|підтримайте|реклам|проєкт|проект\s|monobank|переходьте|читач|довіряйте|прожили|найважч|app\s?store|google\s?play/i;
+
+// підсумки «у ніч на …», «за ніч збито …» — це не живі цілі (додано понад 30 нових шаблонів підсумків)
+const NIGHT = /(?:у|за|протягом)\s+ніч\S*|протягом ночі|вранці|зафіксовано влучання|місцях падіння|локаці[яй] влучан|(?<![а-яіїєґ])[ув]ночі|минул\S*\s+ноч|цієї\s+ночі|сьогодні\s+вночі|вчора|за\s+добу|упродовж\s+(?:ночі|доби)|завдал[аио]\s+(?:\S+\s+){0,2}?удар|завдав\s+(?:\S+\s+){0,2}?удар|завдан\S*\s+удар|(?:було|були)\s+(?:випущен|запущен|збит|знищен|завдан|пошкоджен)|випустил[аи]|запустил[аи]\s+по|наслідки|заявив|заявила|за\s+словами|[—–-]\s*зеленськ|зеленськ\S*\s+(?:заявив|повідомив)|дснс|(?:поранених|постраждалих|загиблих)\s+не\s+зафіксован\S*|спалахн\S*\s+(?:\S+\s+){0,2}?(?:автомобіл|авто|будинок|будівл|склад)|момент\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|(?:відео|кадри|фото|запис)\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|вирв(?:а|и|у|і|ою)(?![а-яіїєґ])|після\s+(?:прильот|влучанн)|звіт\s+за|підсумки\s+(?:доби|ночі)|ранкове\s+зведення|зведення\s+генштабу|подробиці\s+атаки|ліквідація\s+наслідків|пожежно-рятувальн|руйнування\s+взанаслідок|пошкоджено\s+приватні|уламки\s+(?:впали|ушкодили|пошкодили)|знайдено\s+боєголовку|роботи\s+з\s+знешкодження|результати\s+роботи\s+ппо|підтверджено\s+знищення|ураження\s+цілі|знищено\s+ворожу\s+техніку/i;
+
+// Службові/рекламні пости каналів (додано понад 40 слів фінансового шуму, реклами та прохань про підписки)
+const NOISE = /дякуємо|дякую\s|донат|підтримайте|реклам|проєкт|проект\s|monobank|переходьте|читач|довіряйте|прожили|найважч|app\s?store|google\s?play|збір\b|соборка|підписуйтесь|канал\s+друзів|партнерський\s+пост|промокод|знижка|крипта|заробіток|казино|ставки|посилання\s+в\s+шапці|читайте\s+також|джерело:|інсайд|ексклюзив|надіслати\s+новину|наш\s+бот|опитування|ставте\s+лайк|реакції|підпишись|найновіші\s+новини|офіційний\s+мерч|роззіграш|вигравай|безкоштовно|рекомендація|вже\s+на\s+каналі|подробиці\s+посилання/i;
+
+// Перевірка на хибні тривоги: "не підтвердилось", "помилкова ціль"
+const FALSE_ALARM = /не\s+підтвердил|хибна\s+ціль|акустична\s+помилка|загроза\s+минула|чисте\s+небо|цілей\s+не\s+виявлено|помилковий\s+пуск|чисто\s+в\s+області/i;
+
 // Банер «балістична загроза» лише для коротких оперативних повідомлень: має бути ознака загрози/пуску/курсу
 const BALL_CUE = /загроз|небезпек|пуск|запуск|курс|летить|летять|прямує|рухаєт|напрямк|уваг|група|швидкісн|у\s+повітрі|виліт|зліт/i;
 // «→Бориспіль», «курсом на Київ», «прямує до …» — названо місце, ДО ЯКОГО летить ціль, а не де вона зараз
@@ -208,7 +211,9 @@ function countOf(l) {
   if (!n) { m = NUMRE.exec(l); if (m) { const k = Object.keys(NUMW).find(k => new RegExp('^(?:' + k + ')$', 'i').test(m[1])); n = NUMW[k] || NUMW[m[1].toLowerCase()]; } }
   return n >= 2 && n <= 99 ? n : undefined;
 }
-const CLOSING = /збит|збив|знищен|мінус|зник|відбій|відбито|покинув|покинули|вийшов за межі|вийшли за межі|ціль втрачен/i;
+
+// Завершення загрози (розширено додатковими варіаціями відбоїв)
+const CLOSING = /збит|збив|знищен|мінус|зник|відбій|відбито|покинув|покинули|вийшов за межі|вийшли за межі|ціль втрачен|локаційно\s+втрачено|впав|розбився|припинив\s+існування|немає\s+цілей|чисто/i;
 const dist = (a, b) => Math.hypot(a[0] - b[0], (a[1] - b[1]) * Math.cos(a[0] * Math.PI / 180));
 
 // ---- Тривоги: ключі "Область", "Область|Район район", "м. Київ"; рівні red/yellow; тип AIR/ART ----
@@ -377,12 +382,16 @@ async function pollTG(ch) {
         let k = kind(line);
         if (k) carry = k; else if (BULLET.test(line) && carry && line.trim().length < 220) k = carry; else if (line.trim() && !BULLET.test(line)) carry = null;
         const key = id + '#' + i;
-        if (k === 'ballistic' && !seen.has(key + 'b') && !NIGHT.test(line) && !NOISE.test(line) && BALL_CUE.test(line) && line.trim().length > 6 && line.trim().length < 260) { // банер «балістична загроза» — навіть якщо місце не названо
+
+        // перевірка сміття, підсумків та спростувань тривог
+        if (NIGHT.test(line) || NOISE.test(line) || FALSE_ALARM.test(line)) return;
+
+        if (k === 'ballistic' && !seen.has(key + 'b') && BALL_CUE.test(line) && line.trim().length > 6 && line.trim().length < 260) { // банер «балістична загроза» — навіть якщо місце не названо
           seen.add(key + 'b');
           if (CLOSING.test(line)) { for (const w of ballWarn) if (w.t <= tms && !w.dead) w.dead = tms; }
           else if (!ballWarn.some(w => w.key === key)) ballWarn.push({ key, post: id, ch, t: tms, text: line.trim().slice(0, 220) });
         }
-        if (NIGHT.test(line) || NOISE.test(line)) return;
+
         if (k && CLOSING.test(line) && /відбій|відбою/i.test(line) && !placesRaw(line).length) { // «Відбій балістики / шахедів» без місця — знімаємо живі цілі цього типу з цього каналу
           if (!seen.has(key + 'c')) { seen.add(key + 'c'); for (const x of threats.values()) if (x.type === k && !x.dead && x.t <= tms && tms - x.t <= TTL && (x.src || []).some(a => a.ch === ch)) x.dead = tms; }
           return;
@@ -507,7 +516,7 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   try { const c = JSON.parse(fs.readFileSync(path.join(DATA, 'channels.json'))); if (!process.env.TG_CHANNELS && Array.isArray(c.channels) && uniq(c.channels).length) CHANNELS = uniq(c.channels); } catch (e) {} // вибір з інтерфейсу — найвищий пріоритет після змінної середовища
   try { loadGaz(); } catch (e) { logErr('settlements.json: ' + e.message); }
   try { loadGeo(); } catch (e) { geoErr = 'raions.json: ' + e.message; console.error(geoErr); logErr(geoErr); }
-  try { const h = JSON.parse(fs.readFileSync(path.join(DATA, 'history.json'))); snaps = h.snaps || []; lastGood = h.lastGood || 0; (h.threats || []).filter(t => !NIGHT.test(t.text || '') && !NOISE.test(t.text || '')).forEach(t => { threats.set(t.id, t); seen.add(t.id); (t.src || []).forEach(a => seen.add(a.key)); }); ballWarn = (h.ballWarn || []).filter(w => !NIGHT.test(w.text || '') && !NOISE.test(w.text || '') && BALL_CUE.test(w.text || '')); ballWarn.forEach(w => seen.add(w.key + 'b')); } catch (e) {}
+  try { const h = JSON.parse(fs.readFileSync(path.join(DATA, 'history.json'))); snaps = h.snaps || []; lastGood = h.lastGood || 0; (h.threats || []).filter(t => !NIGHT.test(t.text || '') && !NOISE.test(t.text || '') && !FALSE_ALARM.test(t.text || '')).forEach(t => { threats.set(t.id, t); seen.add(t.id); (t.src || []).forEach(a => seen.add(a.key)); }); ballWarn = (h.ballWarn || []).filter(w => !NIGHT.test(w.text || '') && !NOISE.test(w.text || '') && !FALSE_ALARM.test(w.text || '') && BALL_CUE.test(w.text || '')); ballWarn.forEach(w => seen.add(w.key + 'b')); } catch (e) {}
   CHANNELS.forEach(c => { chStat[c] = chStat[c] || { ok: false, n: 0 }; });
   let rot = 0;
   const pollNext = () => { // один канал за раз, рівномірно протягом POLL_EVERY; зайняті й ті, що «відпочивають», пропускаємо

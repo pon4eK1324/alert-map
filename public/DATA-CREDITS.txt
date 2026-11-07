@@ -1,0 +1,2 @@
+Межі районів: https://github.com/korzhyk/alert-map (MIT, (c) 2022 Andrii Korzh), файл public/ukrainian_geodata/rayony.geojson.
+Повний текст ліцензії: LICENSE-korzhyk-alert-map.txt

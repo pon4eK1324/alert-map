@@ -1,0 +1,30 @@
+{
+  "name": "alertmap",
+  "version": "1.1.0",
+  "description": "Карта повітряних тривог України з таймлапсом",
+  "main": "main.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "desktop": "electron .",
+    "build:exe": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "ua.alertmap.app",
+    "productName": "AlertMap",
+    "files": [
+      "main.js",
+      "server.js",
+      "places.js",
+      "public/**/*"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "public/avatar.png"
+    }
+  }
+}

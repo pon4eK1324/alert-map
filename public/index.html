@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#12151b"><script>try{var t=(JSON.parse(localStorage.getItem("am_settings")||"{}").theme)||localStorage.getItem("theme")||"dark";if(t==="auto")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.setAttribute("data-theme",t)}catch(e){}</script><link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><link rel="icon" href="avatar.png"><link rel="apple-touch-icon" href="avatar.png">
+<title>Мапа тривог України в реальному часі — AlertMap</title>
+<meta name="description" content="Інтерактивна карта повітряних тривог України онлайн: рівні загроз, балістика, дрони, звукові сповіщення та офлайн-режим." />
+<meta name="keywords" content="карта тривог, повітряна тривога, мапа тривог україни, тривоги онлайн, alerts.in.ua" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#12151b;--mapbg:#12151b;--panel:rgba(22,25,31,.92);--b:#2d323c;--txt:#eceff4;--mut:#8a93a3;--btn:#262b35;--btn-b:#3a404c;--lbl:#e9ecf1;--lbl-sh:#000;--accent:#4f8fe0;--on-accent:#fff;
+--poly:#2b303b;--polyb:#1b1f27;--oblb:#0c0e12;--track:#fff;--y1:#b8921c;--y2:#7c6317;--r1:#9a2429;--r2:#5e2228;--a1:#7a4a1e;--a2:#54331a;
+--ok:#6fd08c;--warn:#e6b84a;--bad:#ff8a8a;--shadow:0 6px 24px #0007;--isz:36px;--tgtbg:rgba(14,17,23,.88);--is:#0d1117;--c-shahed:#f5b83d;--c-missile:#ff5d5d;--c-ballistic:#c77dff;--c-jet:#4fd8ff;--c-boom:#ff7a1a}
+[data-theme=light]{--bg:#f2f3f6;--mapbg:#d6e0ea;--panel:rgba(255,255,255,.95);--b:#e0e4eb;--txt:#18202e;--mut:#667086;--btn:#f4f6f9;--btn-b:#d8dde6;--lbl:#2a3344;--lbl-sh:#fff;
+--poly:#f8f7f3;--polyb:#dcdfe6;--oblb:#8d98ab;--track:#1b2230;--y1:#f7c948;--y2:#eaa913;--r1:#ef6a6d;--r2:#d63a42;--a1:#d99a5f;--a2:#b87333;
+--ok:#1d8a4b;--warn:#a8710a;--bad:#c93a3a;--shadow:0 4px 18px rgba(30,40,60,.15);--tgtbg:rgba(255,255,255,.96)}
+body.satmode{--lbl:#e9ecf1;--lbl-sh:#000}
+*{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--txt);font:14px system-ui,-apple-system,sans-serif}
+#map{position:absolute;inset:0;background:var(--mapbg);outline:0}
+.leaflet-container{background:var(--mapbg);font:inherit}
+body.satmode #map,body.satmode .leaflet-container{background:#0b0d11}
+.clbl{color:var(--lbl);font-size:calc(var(--fs,12px) - 1px);text-shadow:0 0 3px var(--lbl-sh),0 0 3px var(--lbl-sh),0 0 5px var(--lbl-sh);white-space:nowrap;text-align:center;transform:translate(-50%,-50%);pointer-events:none;width:max-content}
+.lbl{color:var(--lbl);font-size:var(--fs,12px);text-shadow:0 0 3px var(--lbl-sh),0 0 3px var(--lbl-sh);white-space:nowrap;text-align:center;transform:translate(-50%,-50%);pointer-events:none;width:max-content}
+.vlbl{color:var(--lbl);font-size:calc(var(--fs,12px) - 3px);opacity:.9;text-shadow:0 0 3px var(--lbl-sh),0 0 3px var(--lbl-sh),0 0 5px var(--lbl-sh);white-space:nowrap;text-align:center;transform:translate(-50%,-50%);pointer-events:none;width:max-content}
+.home{display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-6px);pointer-events:none}
+.home i{width:11px;height:11px;border-radius:50%;background:#3ddc84;border:2px solid #fff}
+.home span{font-size:11px;color:var(--lbl);text-shadow:0 0 3px var(--lbl-sh),0 0 3px var(--lbl-sh);margin-top:2px}
+.leaflet-bar a{background:var(--panel);color:var(--txt);border-color:var(--b)}.leaflet-bar a:hover{background:var(--btn)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel);color:var(--txt);box-shadow:var(--shadow)}
+.leaflet-popup-content-wrapper{border-radius:12px}.leaflet-popup-content{margin:12px 14px}
+.leaflet-popup-content a{color:var(--accent)}.leaflet-container a.leaflet-popup-close-button{color:var(--mut)}
+.leaflet-tooltip{background:var(--panel);color:var(--txt);border:1px solid var(--b);border-radius:8px;box-shadow:var(--shadow)}
+.leaflet-tooltip-top:before,.leaflet-tooltip-bottom:before,.leaflet-tooltip-left:before,.leaflet-tooltip-right:before{display:none}
+#at{display:none;position:absolute;z-index:900;right:4px;bottom:2px;font-size:10px;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;pointer-events:none;opacity:.8}
+.satmode #at{display:block}
+.far .lbl{display:none}
+.box{background:var(--panel);border:1px solid var(--b);border-radius:14px;backdrop-filter:blur(8px);box-shadow:var(--shadow);color:var(--txt)}
+button,select{background:var(--btn);color:var(--txt);border:1px solid var(--btn-b);border-radius:10px;padding:8px 10px;font:inherit;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover,select:hover{border-color:var(--accent)}
+button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+#tools{position:absolute;z-index:1000;right:max(12px,env(safe-area-inset-right));top:calc(10px + env(safe-area-inset-top));display:flex;gap:8px}
+.tool{padding:9px 13px;font-weight:600;border-radius:12px;background:var(--panel);border:1px solid var(--b);box-shadow:var(--shadow)}
+#sat.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+#pn{display:none;position:absolute;z-index:1001;right:max(12px,env(safe-area-inset-right));top:calc(58px + env(safe-area-inset-top));width:min(330px,calc(100vw - 24px));max-height:calc(100vh - 80px - env(safe-area-inset-top));overflow-y:auto;padding:14px;flex-direction:column;gap:11px}#pn.open{display:flex}
+.sec{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--mut);letter-spacing:.02em}
+.seg{display:flex;gap:4px}.seg button{flex:1;padding:7px 4px;font-size:13px}
+#acc{display:flex;gap:9px;flex-wrap:wrap}#acc i{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;box-shadow:inset 0 0 0 2px var(--panel);transition:transform .12s}#acc i:hover{transform:scale(1.12)}#acc i.on{border-color:var(--txt)}
+#stats{position:absolute;z-index:1000;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top));display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 600px);pointer-events:none}
+.chip{display:flex;align-items:center;gap:6px;padding:5px 11px;font-weight:700;border-radius:999px;font-variant-numeric:tabular-nums}.chip svg{width:18px;height:18px}.chip small{font-weight:500;color:var(--mut);font-size:11px}.chip.zero{opacity:.5}
+.ico{position:relative;width:var(--isz);height:var(--isz);display:grid;place-items:center;--tc:var(--c-shahed)}
+.leaflet-marker-icon .ico{width:100%;height:100%}
+.ico.shahed{--tc:var(--c-shahed)}.ico.missile{--tc:var(--c-missile)}.ico.ballistic{--tc:var(--c-ballistic)}.ico.jet{--tc:var(--c-jet)}
+.ico svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
+.ico svg path{fill:var(--tc);stroke:var(--is);stroke-width:1.4;stroke-linejoin:round}
+.ico.ballistic svg{filter:drop-shadow(0 0 5px var(--tc)) drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.ico.bg{border-radius:50%;background:var(--tgtbg);border:2px solid var(--tc);box-shadow:0 2px 8px #0007}.ico.bg svg{width:68%;height:68%}
+.ico.reg{opacity:.78}
+.ico.pulse::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--tc);animation:pl 1.8s ease-out infinite;pointer-events:none}
+@keyframes pl{from{transform:scale(.75);opacity:.9}to{transform:scale(1.4);opacity:0}}
+.cnt{position:absolute;right:-9px;top:-9px;min-width:22px;height:20px;padding:0 5px;border-radius:10px;background:var(--accent);color:var(--on-accent);font:700 12px/17px system-ui,sans-serif;text-align:center;border:2px solid var(--tgtbg);box-shadow:0 1px 4px #0008}
+.no-obl .lbl{display:none}
+#ballb{display:none;position:absolute;z-index:1002;left:50%;transform:translateX(-50%);top:calc(56px + env(safe-area-inset-top));width:min(470px,calc(100vw - 24px));padding:9px 12px;border:1.5px solid var(--c-ballistic);animation:bg 2s ease-in-out infinite;font-size:12.5px;line-height:1.35}
+#ballb.show{display:block}#ballb b.h{color:var(--c-ballistic);font-size:13px;letter-spacing:.03em}#ballb .x{position:absolute;right:6px;top:4px;padding:0 7px;border:0;background:none;font-size:16px;color:var(--mut)}
+#ballb .ln{margin-top:4px;padding-top:4px;border-top:1px solid var(--b)}
+@keyframes bg{0%,100%{box-shadow:0 0 0 0 #c77dff00,var(--shadow)}50%{box-shadow:0 0 16px 2px #c77dff66,var(--shadow)}}
+.chip.hot{border-color:var(--c-ballistic)}
+#pn .grp{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:700;margin:2px 0 -4px}
+#pn .c{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--txt)}
+#pn .c input[type=range]{width:120px;accent-color:var(--accent)}#pn .c input[type=color]{width:34px;height:26px;padding:0;border:1px solid var(--btn-b);border-radius:6px;background:none;cursor:pointer}
+#pn .c .rs{padding:2px 7px;margin-left:4px}
+#pn .tg{width:42px;height:24px;border-radius:12px;padding:0;position:relative;flex:0 0 42px}#pn .tg::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--mut);transition:transform .15s}
+#pn .tg.on::after{transform:translateX(18px);background:var(--on-accent)}
+#pn .cs{flex-wrap:wrap}#pn .cs .seg{flex:1 1 100%}#pn .seg button{padding:6px 2px;font-size:12px}
+#chl{max-height:150px;overflow:auto;font-size:12px}.chr{display:flex;gap:6px;align-items:center;padding:2px 0}.chr .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chr button{padding:0 7px}.chr .ok{color:var(--ok)}.chr .bad{color:var(--bad)}
+#pn input[type=text]{flex:1;min-width:0;background:var(--btn);color:var(--txt);border:1px solid var(--btn-b);border-radius:10px;padding:7px 9px;font:inherit}
+#wm{position:absolute;z-index:1000;left:max(14px,env(safe-area-inset-left));bottom:calc(14px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;pointer-events:none}
+#logo{width:44px;height:44px;border-radius:12px;background:linear-gradient(145deg,#1b2d5c,#0b1330);display:grid;place-items:center;font-size:22px;border:2px solid var(--accent);overflow:hidden;pointer-events:auto;cursor:pointer;box-shadow:0 2px 10px #0006}
+#logo img{width:100%;height:100%;object-fit:cover;display:block}
+#wm b{display:block;font-size:15px;color:var(--txt);text-shadow:0 0 4px var(--bg),0 0 4px var(--bg)}#wm small{display:block;color:var(--mut);font-size:14px;line-height:1.15;text-shadow:0 0 4px var(--bg),0 0 4px var(--bg)}#src{color:var(--bad);font-size:11px;max-width:60vw;text-shadow:0 0 4px var(--bg)}
+#st{display:inline-block;margin-top:3px;padding:2px 10px;border-radius:999px;font-size:11px;line-height:1.5;cursor:pointer;pointer-events:auto;background:var(--panel);border:1px solid var(--b);color:var(--mut)}#st.ok{color:var(--ok)}#st.warn{color:var(--warn)}#st.bad{color:var(--bad)}
+#bar{position:absolute;z-index:1000;right:max(12px,env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));padding:8px;display:flex;flex-direction:column;gap:8px;width:min(330px,calc(100vw - 24px))}
+.row{display:flex;gap:6px;align-items:center}.row>*{flex:1}
+#rp{display:none;flex-direction:column;gap:8px}#rp.show{display:flex}#sl{width:100%;accent-color:var(--accent)}
+#lg{position:absolute;z-index:1000;left:max(10px,env(safe-area-inset-left));top:calc(10px + env(safe-area-inset-top));max-width:min(340px,calc(100vw - 70px));padding:8px}
+#lgb{width:100%;text-align:left;background:none;border:0;padding:2px 4px;font-weight:600}#lgb:hover{border:0;color:var(--accent)}
+#lgc{display:none;margin-top:6px;font-size:12.5px;line-height:1.35}#lg.open #lgc{display:block}
+#lgc div{display:flex;gap:8px;align-items:flex-start;margin:6px 0}
+.sw{flex:0 0 18px;height:18px;border-radius:5px;border:1px solid #0006;margin-top:1px}
+#lgc svg{flex:0 0 22px}#lgc small{color:var(--mut);display:block;margin-top:6px;font-size:11px}
+@media(max-width:1000px){#ballb{top:calc(104px + env(safe-area-inset-top))}#stats{left:auto;right:max(12px,env(safe-area-inset-right));transform:none;top:calc(58px + env(safe-area-inset-top));justify-content:flex-end;max-width:70vw}}
+@media(max-width:640px){.leaflet-control-zoom{display:none}#wm{bottom:calc(150px + env(safe-area-inset-bottom))}#bar{left:12px;right:12px;width:auto}button,select{padding:11px 8px}}
+
+.ico.boom{--tc:var(--c-boom)}
+.ico.cr4 svg,.ico.cr5 svg{filter:drop-shadow(0 0 5px var(--tc)) drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.ico.cr5::before{content:'';position:absolute;inset:-3px;border-radius:50%;border:1.5px solid var(--tc);opacity:.55;pointer-events:none}
+.ico.boom svg{animation:bm 1.4s ease-in-out infinite}@keyframes bm{50%{transform:scale(1.14)}}
+#tools{flex-wrap:wrap;justify-content:flex-end;max-width:calc(100vw - 24px)}
+#fd,#sr{display:none;position:absolute;z-index:1001;right:max(12px,env(safe-area-inset-right));top:calc(58px + env(safe-area-inset-top));width:min(360px,calc(100vw - 24px));padding:12px;flex-direction:column;gap:8px}
+#fd{max-height:calc(100vh - 150px - env(safe-area-inset-top))}
+#fd.open,#sr.open{display:flex}
+#fdf{display:flex;gap:5px;flex-wrap:wrap}#fdf button{padding:5px 10px;font-size:12px;border-radius:999px}#fdf button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+#fdl{overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:0}
+.fi{padding:7px 9px;border:1px solid var(--b);border-radius:10px;cursor:pointer;font-size:12.5px;line-height:1.35}.fi:hover{border-color:var(--accent)}
+.fi .m{display:flex;gap:6px;align-items:center;color:var(--mut);font-size:11.5px;margin-bottom:3px;flex-wrap:wrap}.fi .m .ico{width:16px;height:16px;flex:0 0 16px}.fi .m a{color:var(--accent);text-decoration:none}
+#sr input{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--btn-b);background:var(--btn);color:var(--txt);font:inherit;box-sizing:border-box}
+#srl{display:flex;flex-direction:column;max-height:50vh;overflow-y:auto}
+.si{padding:7px 9px;border-radius:8px;cursor:pointer;font-size:13px}.si:hover,.si.sel{background:var(--btn)}.si small{color:var(--mut);display:block;font-size:11.5px}
+</style>
+<script>
+// Web Audio API Sound Generator for Air Raid Siren & Cancellation
+const AlertAudio = {
+  ctx: null,
+  enabled: true,
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  },
+  playAlert() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      const now = this.ctx.currentTime;
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.8);
+      osc.frequency.exponentialRampToValueAtTime(440, now + 1.6);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 1.8);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 1.8);
+    } catch(e){ console.error(e); }
+  },
+  playClear() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      const now = this.ctx.currentTime;
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.setValueAtTime(659.25, now + 0.2); // E5
+      osc.frequency.setValueAtTime(783.99, now + 0.4); // G5
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.8);
+    } catch(e){ console.error(e); }
+  }
+};
+window.addEventListener('click', () => AlertAudio.init(), { once: true });
+</script>
+
+</head><body>
+<div id="map"></div>
+<div id="tools"><button id="srb" class="tool" title="Пошук населеного пункту">🔍</button><button id="fdb" class="tool" title="Стрічка повідомлень">📋 Стрічка</button><button id="sat" class="tool">🛰 Супутник</button><button id="cfg" class="tool" title="Вигляд">⚙ Вигляд</button></div>
+<div id="pn" class="box"></div>
+<div id="fd" class="box"><div id="fdf"></div><div id="fdl"></div></div>
+<div id="sr" class="box"><input id="sri" placeholder="Місто, селище чи село…" autocomplete="off"><div id="srl"></div></div>
+<div id="ballb" class="box"></div>
+<div id="stats"></div>
+<div id="at">Imagery © Esri, Maxar, Earthstar Geographics</div>
+<div id="lg" class="box"><button id="lgb">ⓘ Рівні тривоги</button>
+ <div id="lgc">
+  <div><i class="sw" style="background:var(--y1)"></i><span><b>Жовтий рівень</b> — дронова загроза (БпЛА, шахеди)</span></div>
+  <div><i class="sw" style="background:var(--r1)"></i><span><b>Червоний рівень</b> — ракетна небезпека, у т.ч. балістика, масовані нальоти</span></div>
+  <div><i class="sw" style="background:linear-gradient(90deg,var(--y2) 50%,var(--r2) 50%)"></i><span><b>Темніші відтінки</b> — тривога оголошена на всю область</span></div>
+  <div><i class="sw" style="background:var(--a1)"></i><span><b>Коричневий</b> — артобстріл / вуличні бої</span></div>
+  <div><i class="sw" style="background:var(--r1);opacity:.6"></i><span><b>Напівпрозорий</b> — тривога лише в громаді чи місті, підсвічено весь район</span></div>
+  <div id="lgi"></div>
+  <small>Рівні й зони беруться з офіційних даних тривог. Іконки цілей — за повідомленнями каналів, місця приблизні; ціль без тривоги під нею не показується. Число біля значка (2×) — скільки цілей летить разом. Фіолетовий банер угорі — повідомлення про балістику.</small>
+ </div></div>
+<div id="wm"><div id="logo" title="Натисніть, щоб побачити стан джерел"><img src="avatar.png" alt="AlertMap" onerror="this.parentNode.textContent='🇺🇦'"></div><div><b>AlertMap</b><small id="tl"></small><div id="st" title="Натисніть, щоб побачити стан каналів">● Підключення…</div><div id="src"></div></div></div>
+<div id="bar" class="box">
+ <div class="row"><button id="bl" class="on">Наживо</button><button id="br">Таймлапс</button></div>
+ <div id="rp">
+  <div class="row"><button id="pl" style="flex:0 0 46px">▶</button>
+  <select id="hr"><option value="6">6 год</option><option value="12">12 год</option><option value="24" selected>24 год</option><option value="48">48 год</option></select>
+  <select id="sp"><option value="60">60×</option><option value="300" selected>300×</option><option value="900">900×</option><option value="1800">1800×</option></select></div>
+  <input id="sl" type="range" step="60000">
+ </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const $=id=>document.getElementById(id), KYIV='м. Київ';
+let WIN=10*60e3; // скільки хвилин ціль лишається на мапі після останнього повідомлення (значення приходить із сервера)
+let BASE_DARK={fillColor:'#2b303b',fillOpacity:1,color:'#1b1f27',weight:.8};
+const BASE_SAT={fillColor:'#000',fillOpacity:0,color:'#fff',opacity:.4,weight:.7};
+let BASE=BASE_DARK,sat=false;
+let COL={yellow:['#b8921c','#7c6317'],red:['#9a2429','#5e2228'],art:['#7a4a1e','#54331a']}; // [район, вся область]
+const map=L.map('map',{minZoom:5,maxZoom:17,attributionControl:false,zoomSnap:.25}).setView([48.7,31.3],6);
+map.fitBounds([[44.2,22.1],[52.4,40.3]],{padding:[10,10]});map.setMaxBounds([[42,18],[55,44]]);
+let REF=Date.now(),STALE=false,LG=0,R=[],kyiv,kyivZ=null,diagTxt='',showDiag=false,snaps=[],threats=[],liveAlerts=[],mode='live',T=Date.now(),play=null;
+const tg=L.layerGroup().addTo(map);
+
+const pad=n=>String(n).padStart(2,'0');
+const fmt=t=>{const d=new Date(t);return d.toLocaleDateString('uk-UA',{day:'numeric',month:'long'})+' '+pad(d.getHours())+':'+pad(d.getMinutes())};
+const alertsAt=t=>{let a=[];for(const s of snaps){if(s.t<=t)a=s.a;else break}return a};
+const bearing=(a,b)=>Math.atan2((b[1]-a[1])*Math.cos(a[0]*Math.PI/180),b[0]-a[0])*180/Math.PI;
+const norm=x=>typeof x==='string'?{k:x,l:'red',t:'AIR',p:false}:x; // сумісність зі старою історією
+
+/* Стиль району за списком тривог: червоний > артобстріл > жовтий; пряма тривога району > тривога всієї області > громадська */
+function styleFor(k,o,items){
+  let best=null;
+  for(const i of items){
+    const scope=i.k===k?1:i.k===o?0:-1; if(scope<0)continue;
+    const lv=i.t==='ART'?'art':i.l==='yellow'?'yellow':'red';
+    const sc=(i.p?{red:3,art:2,yellow:1}:{red:30,art:20,yellow:10})[lv]+scope;
+    if(!best||sc>best.sc)best={sc,c:COL[lv][scope?0:1],op:i.p?.7:1};
+  }
+  return best?{...BASE,fillColor:best.c,fillOpacity:best.op*(sat?.5:1)*S.zop/100}:BASE;
+}
+
+/* ---------- Налаштування (зберігаються в браузері одним об'єктом) ---------- */
+const DEF={theme:'dark',accent:'#4f8fe0',isz:36,iconBg:false,pulse:false,badge:true,trails:'off',regZone:false,
+ tShahed:true,tMissile:true,tBallistic:true,onlyAlert:true,life:10,cShahed:'#f5b83d',cMissile:'#ff5d5d',cBallistic:'#c77dff',tJet:true,cJet:'#4fd8ff',tBoom:true,cBoom:'#ff7a1a',cred:true,ballMin:2,
+ cYellow:'',cRed:'',cArt:'',zop:100,raionB:true,cityLbl:true,oblLbl:true,fscale:100,stats:true,legend:true,ballBanner:true,ballSound:false};
+let S={...DEF};
+try{const o=JSON.parse(localStorage.getItem('am_settings')||'null');
+  if(o)Object.assign(S,o);
+  else{const t=localStorage.getItem('theme'),a=localStorage.getItem('accent'),z=localStorage.getItem('isz');
+    if(t)S.theme=t;if(/^#[0-9a-f]{6}$/i.test(a||''))S.accent=a;if(z)S.isz={s:28,m:36,l:46}[z]||36}}catch(_){}
+const saveS=()=>{try{localStorage.setItem('am_settings',JSON.stringify(S))}catch(_){}};
+const SVG={
+ shahed:'<path d="M12 1.5c.9 0 1.5.9 1.5 2V9l8.5 5.2v2.3L13.5 14v4.3l2.4 1.9V22L12 21l-3.9 1v-1.8l2.4-1.9V14L2 16.5v-2.3L10.5 9V3.5c0-1.1.6-2 1.5-2z"/>',
+ missile:'<path d="M12 1.5c1.1 1.4 1.4 4.4 1.3 7.5l6.2 5v2l-6.3-1.8-.1 5.3 2.4 2v1.3L12 21.8l-3.5 1v-1.3l2.4-2-.1-5.3L4.5 16v-2l6.2-5c-.1-3.1.2-6.1 1.3-7.5z"/>',
+ boom:'<path d="M12 1.200l2.300 5.100 5.300-2.600-1.600 5.700 5.600 1.300-4.700 3.600 3.100 4.900-5.600-.6-.5 5.700L12 19.800l-3.900 3.300-.5-5.700-5.600.6 3.100-4.900-4.700-3.600 5.600-1.300-1.600-5.700 5.300 2.600z"/><circle cx="12" cy="12.500" r="3.300" style="fill:var(--is);stroke:none;opacity:.7"/>',
+ jet:'<path d="M12 1l1.300 5.200.900 3.500 7.400 5.300v2.600l-7.400-2.200-.600 3.800 2.200 1.800v1.600l-3.800-.9-3.800.9v-1.600l2.200-1.800-.600-3.800-7.400 2.200v-2.600l7.400-5.300.900-3.500z"/><path d="M12 6.800c.7 1.200.9 2.600.8 3.800h-1.600c-.1-1.200.1-2.600.8-3.800z" style="stroke:none;fill:var(--is);opacity:.75"/>',
+ ballistic:'<path d="M12 .8c2.3 3 2.9 7 2.7 11.2v5l3 3.5V22l-3.4-1.4-.9 2.2h-2.8l-.9-2.2L6 22v-1.5l3-3.5v-5C8.8 7.8 9.700 3.800 12 .8z"/>'};
+const TNAME={shahed:'Шахед (гвинтовий)',jet:'Реактивний шахед',boom:'Вибухи',missile:'Ракета',ballistic:'Балістика'},TKEY={shahed:'tShahed',jet:'tJet',boom:'tBoom',missile:'tMissile',ballistic:'tBallistic'};
+const zk=()=>Math.max(.8,Math.min(1.4,.8+.045*(map.getZoom()-5))); // чим ближче мапа — тим трохи більший значок (без фанатизму)
+const isz=()=>Math.round(S.isz*zk());
+const credN=h=>new Set((h.src&&h.src.length?h.src:[{ch:h.ch}]).map(s=>s.ch||'?')).size;
+const icon=(h,b,fresh,cn)=>{const z=isz(),pl=(S.pulse||h.type==='boom')&&fresh;return L.divIcon({className:'',iconSize:[z,z],html:`<div class="ico ${h.type}${S.iconBg?' bg':''}${pl?' pulse':''}${h.reg?' reg':''}${S.cred&&cn>1?' cr'+Math.min(5,cn):''}"><svg viewBox="0 0 24 24" style="transform:rotate(${b}deg)">${SVG[h.type]}</svg>${S.badge&&h.n>1?`<b class="cnt">${h.n}×</b>`:''}</div>`})};
+$('lgi').innerHTML=[['shahed','шахед'],['jet','реактивний'],['boom','вибухи'],['missile','ракета'],['ballistic','балістика']].map(([k,t])=>`<span class="ico ${k}" style="--isz:22px;flex:0 0 22px"><svg viewBox="0 0 24 24">${SVG[k]}</svg></span><span style="margin-right:10px">${t}</span>`).join('');
+$('lgi').style.alignItems='center';$('lgi').style.flexWrap='wrap';
+
+const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+/* Вікно цілі: список джерел (канал, час, текст, посилання на пост у Telegram) */
+function popup(h){
+  const src=(h.src&&h.src.length?h.src:[{ch:h.ch,id:(h.id||'').split('#')[0],t:h.t,text:h.text}]).slice().sort((x,y)=>y.t-x.t);
+  const rows=src.slice(0,8).map(s=>`<div style="margin:6px 0 0;padding-top:5px;border-top:1px solid var(--b)"><a href="https://t.me/${esc(s.id)}" target="_blank" rel="noopener"><b>@${esc(s.ch||'')}</b> · ${pad(new Date(s.t).getHours())}:${pad(new Date(s.t).getMinutes())}</a><br><span style="font-size:12px">${esc(s.text).slice(0,160)}</span></div>`).join('');
+  return `<b>${TNAME[h.type]||'Ціль'}${h.n>1?' · '+h.n+'×':''}</b> <span style="color:var(--mut)">· повідомлень: ${src.length}</span><div style="font-size:11.5px;color:var(--mut);margin-top:2px">Достовірність: ${'●'.repeat(Math.min(5,credN(h)))}${'○'.repeat(5-Math.min(5,credN(h)))} · незалежних каналів: ${credN(h)}</div>${rows}${src.length>8?'<div style="font-size:11px;margin-top:4px">… і ще '+(src.length-8)+'</div>':''}<div style="font-size:11px;color:var(--mut);margin-top:6px">${h.reg?'Точне місце невідоме — десь у межах області':'Місце приблизне, за текстом повідомлень'}</div>`;
+}
+/* Чи стоїть ціль у зоні тривоги: точка у полігоні району (або не далі tol км від його межі) */
+function inRing(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
+function edgeKm(x,y,r){const k=Math.cos(y*Math.PI/180)*111.3;let m=1e9;for(let i=1;i<r.length;i++){const ax=r[i-1][0]*k,ay=r[i-1][1]*111.3,bx=r[i][0]*k,by=r[i][1]*111.3,px=x*k,py=y*111.3,dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy;let t=l?((px-ax)*dx+(py-ay)*dy)/l:0;t=Math.max(0,Math.min(1,t));m=Math.min(m,Math.hypot(px-ax-t*dx,py-ay-t*dy))}return m}
+function mkZone(g){const polys=g.type==='Polygon'?[g.coordinates]:g.coordinates;let a=90,b=-90,c=180,d=-180;for(const p of polys)for(const q of p[0]){a=Math.min(a,q[1]);b=Math.max(b,q[1]);c=Math.min(c,q[0]);d=Math.max(d,q[0])}return{polys,bb:[a,b,c,d]}}
+function nearZone(la,lo,zs,tol){for(const z of zs){const pl=tol/110,po=tol/70;if(la<z.bb[0]-pl||la>z.bb[1]+pl||lo<z.bb[2]-po||lo>z.bb[3]+po)continue;
+  for(const p of z.polys){let ins=false;for(const r of p)if(inRing(lo,la,r))ins=!ins;if(ins||(tol>0&&edgeKm(lo,la,p[0])<=tol))return true}}return false}
+function stats(vis,items){ // лічильники зверху: скільки цілей кожного типу (з урахуванням груп 2×, 3×) і скільки областей під тривогою
+  $('stats').style.display=S.stats?'':'none';
+  const c={shahed:0,jet:0,missile:0,ballistic:0,boom:0};for(const h of vis)c[h.type]+=h.n||1;
+  const ob=new Set(items.map(i=>String(i.k).split('|')[0])).size;
+  $('stats').innerHTML=['shahed','jet','missile','ballistic','boom'].map(k=>`<div class="chip box${c[k]?'':' zero'}${k==='ballistic'&&c[k]?' hot':''}" title="${TNAME[k]}"><span class="ico ${k}" style="--isz:18px;width:18px;height:18px"><svg viewBox="0 0 24 24">${SVG[k]}</svg></span>${c[k]}</div>`).join('')+`<div class="chip box${ob?'':' zero'}" title="Областей (і м. Київ) під тривогою">🔔 ${ob}<small>обл.</small></div>`;
+}
+let BALL=[],BTTL=15*60e3,ballDis=0,ballSeen=null,SRC_ERR=false,actx=null;
+function beep(){try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();[0,.22,.44].forEach(d=>{const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.setValueAtTime(.0001,actx.currentTime+d);g.gain.exponentialRampToValueAtTime(.25,actx.currentTime+d+.02);g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+d+.18);o.connect(g).connect(actx.destination);o.start(actx.currentTime+d);o.stop(actx.currentTime+d+.2)})}catch(_){}}
+function renderBall(RT){
+  const v0=BALL.filter(w=>w.t<=RT&&RT-w.t<=BTTL&&!(w.dead&&RT>=w.dead)).sort((a,b)=>b.t-a.t);const v=ballOk(v0),el=$('ballb');
+  if(mode==='live'){const ids=new Set(v.map(w=>w.key));if(ballSeen){if(S.ballSound&&[...ids].some(i=>!ballSeen.has(i)))beep()}ballSeen=ids}
+  if(!S.ballBanner||!v.length||v[0].t<=ballDis){el.classList.remove('show');return}
+  const hm=t=>pad(new Date(t).getHours())+':'+pad(new Date(t).getMinutes());
+  el.innerHTML=`<button class="x" title="Сховати до нового повідомлення">×</button><b class="h">⚠ БАЛІСТИЧНА ЗАГРОЗА</b> <span style="color:var(--mut)">· повідомлень: ${v.length} · каналів: ${chSet(v.map(w=>w.ch)).length}</span>`+v.slice(0,3).map(w=>`<div class="ln"><a href="https://t.me/${esc(w.post)}" target="_blank" rel="noopener"><b>@${esc(w.ch)}</b> · ${hm(w.t)}</a><br>${esc(w.text)}</div>`).join('');
+  el.classList.add('show');el.querySelector('.x').onclick=()=>{ballDis=v[0].t;el.classList.remove('show')};
+}
+
+/* ---------- Плавний рух цілей ----------
+   Маркери живуть між оновленнями. Якщо відомий напрямок (є точка курсу), ціль повільно «летить» до неї
+   зі швидкістю свого типу (не далі 92% шляху), а будь-який стрибок позиції згладжується. */
+const mk=L.layerGroup().addTo(map),MK=new Map(),SPD={shahed:.05,jet:.17,missile:.22,ballistic:.55}; // км/с
+let refAt=performance.now();
+const kmBetween=(a,b)=>Math.hypot((b[0]-a[0])*111.3,(b[1]-a[1])*111.3*Math.cos(a[0]*Math.PI/180));
+const nowT=()=>mode==='live'?(STALE?REF:REF+(performance.now()-refAt)):T;
+function projPos(h){
+  const a=h.pts[0],z=h.pts[h.pts.length-1];
+  if(h.pts.length<2||h.reg)return a;
+  const d=kmBetween(a,z);if(d<.5)return a;
+  const f=Math.min(.92,Math.max(0,(nowT()-h.t)/1000*(SPD[h.type]||.05))/d);
+  return[a[0]+(z[0]-a[0])*f,a[1]+(z[1]-a[1])*f];
+}
+function syncMarker(h,b,fade,fresh,cn){
+  const sig=[h.type,Math.round(b),isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n:0,S.cred?Math.min(5,cn):0].join('|');
+  let e=MK.get(h.id);
+  if(!e){const p=projPos(h);e=MK.set(h.id,{m:L.marker(p,{icon:icon(h,b,fresh,cn),opacity:fade}).bindPopup(popup(h),{maxWidth:340}).addTo(mk),cur:p,sig,h}).get(h.id)}
+  else{e.h=h;e.m.setOpacity(fade);if(e.sig!==sig){e.m.setIcon(icon(h,b,fresh,cn));e.sig=sig}e.m.setPopupContent(popup(h))}
+  e.m.setZIndexOffset(h.type==='ballistic'?1000:h.type==='missile'?500:h.type==='jet'?250:0);
+}
+let lastF=performance.now();
+(function frame(t){
+  const dt=Math.min(.25,(t-lastF)/1000);lastF=t;const k=1-Math.exp(-dt*3); // згладжування ~0.3 с
+  for(const e of MK.values()){
+    const p=projPos(e.h),c=e.cur;
+    if(Math.abs(p[0]-c[0])+Math.abs(p[1]-c[1])<1e-7)continue;
+    e.cur=[c[0]+(p[0]-c[0])*k,c[1]+(p[1]-c[1])*k];e.m.setLatLng(e.cur);
+  }
+  requestAnimationFrame(frame);
+})(performance.now());
+map.on('zoomend',()=>{if(typeof render==='function')render()});
+/* Балістика — лише підтверджена: щонайменше N різних каналів або офіційний канал (проти фейків і «вкидів» з одного джерела) */
+const TRUST=['kpszsu'];
+const chSet=a=>[...new Set(a.map(x=>String(x||'').toLowerCase()))];
+const ballConf=h=>{const c=chSet((h.src&&h.src.length?h.src:[{ch:h.ch}]).map(s=>s.ch));return c.length>=S.ballMin||c.some(x=>TRUST.includes(x))};
+const ballOk=v=>{const c=chSet(v.map(w=>w.ch));return v.length&&(c.length>=S.ballMin||c.some(x=>TRUST.includes(x)))?v:[]};
+function render(){
+  $('tl').textContent=fmt(T);
+  const items=(mode==='live'?liveAlerts:alertsAt(T)).map(norm);
+  for(const r of R)r.l.setStyle(styleFor(r.k,r.o,items));
+  kyiv&&kyiv.setStyle(styleFor(KYIV,'-',items));
+  tg.clearLayers();const seen=new Set();
+  const RT=mode==='live'?REF:T; // у live — опорний час сервера: поки канали недоступні, цілі не зникають за таймером
+  const LIFE=S.life*60e3,vis=[];
+  // фільтр «лише в зоні тривоги»: ціль без повітряної тривоги під нею — не показуємо (якщо джерело тривог не збоїть)
+  const air=items.filter(i=>i.t==='AIR'),useZ=S.onlyAlert&&!(mode==='live'&&SRC_ERR)&&(mode==='live'||snaps.length>0)&&(R.length>0);
+  const zs=useZ?[...R.filter(r=>air.some(i=>i.k===r.k||i.k===r.o)).map(r=>r.z),...(kyivZ&&air.some(i=>i.k===KYIV)?[kyivZ]:[])]:null;
+  for(const h of threats){
+    const LF=h.type==='boom'?Math.min(LIFE,15*60e3):LIFE;
+    if(h.t>RT||RT-h.t>LF||(h.dead&&RT>=h.dead)||!S[TKEY[h.type]]||(h.type==='ballistic'&&!ballConf(h)))continue;
+    const a=h.pts[0],z=h.pts[h.pts.length-1];
+    if(zs&&h.type!=='boom'&&!nearZone(a[0],a[1],zs,h.reg?45:10))continue;
+    vis.push(h);seen.add(h.id);
+    const cn=credN(h),cf=S.cred?[.62,.8,.92,1][Math.min(cn,4)-1]:1,fade=Math.max(.45,1-.55*(RT-h.t)/LF)*cf*(mode==='live'&&STALE?.7:1),b=h.pts.length>1?bearing(a,z):0;
+    if(h.pts.length>1&&(S.trails==='all'||(S.trails==='fast'&&h.type!=='shahed')))L.polyline(h.pts,{color:TRACK,weight:1.5,dashArray:'5 6',opacity:.55*fade,interactive:false}).addTo(tg);
+    if(h.reg&&S.regZone)L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
+    syncMarker(h,b,fade,mode==='live'&&!STALE&&RT-h.t<60e3,cn);
+  }
+  for(const [id,e] of MK)if(!seen.has(id)){mk.removeLayer(e.m);MK.delete(id)}
+  stats(vis,items);renderBall(RT);renderFeed();
+}
+async function live(){
+  if(mode!=='live')return;
+  try{const s=await (await fetch('/api/state')).json();
+    try{localStorage.setItem('am_last',JSON.stringify({at:Date.now(),s:{alerts:s.alerts,threats:s.threats,ball:s.ball,ballTtl:s.ballTtl,ref:s.ref,now:s.now,lastGood:s.lastGood,ttl:s.ttl}}))}catch(_){}
+    liveAlerts=s.alerts;threats=s.threats;BALL=s.ball||[];if(s.ballTtl)BTTL=s.ballTtl;SRC_ERR=String(s.source||'').startsWith('помилка');T=s.now;REF=s.ref||s.now;refAt=performance.now();STALE=!!s.stale;LG=s.lastGood||0;if(s.ttl)WIN=s.ttl;
+    const ch=Object.entries((s.diag||{}).channels||{}),okc=ch.filter(([,v])=>v.ok).length;
+    diagTxt='Тривоги: '+s.source+' · канали '+okc+'/'+ch.length+(ch.length?' ('+ch.map(([k,v])=>(v.ok?'✓ ':v.tried?'✗ ':'… ')+k+(v.ok||!v.err?'':' — '+v.err)).join(', ')+')':'')+((s.diag||{}).geo?' · '+s.diag.geo:'');
+    $('src').textContent=s.source.startsWith('помилка')||showDiag?diagTxt:'';
+    const c=$('st'),tot=ch.length,hh=LG?pad(new Date(LG).getHours())+':'+pad(new Date(LG).getMinutes()):'';
+    if(s.stale){c.className='bad';c.textContent='⚠ Канали недоступні'+(hh?' · показано останні відомі цілі (з '+hh+')':'')}
+    else{c.className=okc<tot?'warn':'ok';c.textContent='● Канали '+okc+'/'+tot}
+    render();
+  }catch(e){
+    if(!threats.length&&!liveAlerts.length){try{const o=JSON.parse(localStorage.getItem('am_last')||'null');if(o&&o.s){const q=o.s;liveAlerts=q.alerts||[];threats=q.threats||[];BALL=q.ball||[];REF=q.ref||q.now||Date.now();T=REF;STALE=true;refAt=performance.now();LG=q.lastGood||o.at;render()}}catch(_){}}
+    $('src').textContent='Немає зв’язку із сервером';const c=$('st');c.className='bad';c.textContent='⚠ Немає зв’язку із сервером · показано останні відомі цілі'}
+}
+async function loadHistory(){
+  const h=await (await fetch('/api/history?hours='+$('hr').value)).json();
+  if(h.ttl)WIN=h.ttl;snaps=h.snaps;threats=h.threats;BALL=h.ball||[];if(h.ballTtl)BTTL=h.ballTtl;const sl=$('sl');sl.min=h.from;sl.max=h.now;sl.value=h.from;T=h.from;render();
+}
+const stop=()=>{clearInterval(play);play=null;$('pl').textContent='▶'};
+function setMode(m){mode=m;stop();$('bl').classList.toggle('on',m==='live');$('br').classList.toggle('on',m==='replay');$('rp').classList.toggle('show',m==='replay');m==='live'?live():loadHistory()}
+$('bl').onclick=()=>setMode('live');$('br').onclick=()=>setMode('replay');$('hr').onchange=loadHistory;
+$('sl').oninput=e=>{T=+e.target.value;render()};
+$('pl').onclick=()=>{
+  if(play)return stop();
+  if(T>=+$('sl').max-1000)T=+$('sl').min;
+  $('pl').textContent='⏸';
+  play=setInterval(()=>{T+=$('sp').value*100;const mx=+$('sl').max;if(T>=mx){T=mx;stop()}$('sl').value=T;render()},100);
+};
+$('logo').onclick=$('st').onclick=()=>{showDiag=!showDiag;$('src').textContent=showDiag||diagTxt.startsWith('Тривоги: помилка')?diagTxt:''};
+$('lgb').onclick=()=>$('lg').classList.toggle('open');
+if(innerWidth>640)$('lg').classList.add('open');
+
+/* «Дім»: права кнопка / довге натискання на мапі міняє місце */
+let home=[49.233,28.468];try{home=JSON.parse(localStorage.getItem('home'))||home}catch(e){}
+const hm=L.marker(home,{interactive:false,icon:L.divIcon({className:'',iconSize:[0,0],html:'<div class="home"><i></i><span>Дім</span></div>'})});
+const SHOW_HOME=false; // true — щоб знову показати точку «Дім»
+if(SHOW_HOME)hm.addTo(map);
+map.on('contextmenu',e=>{home=[e.latlng.lat,e.latlng.lng];hm.setLatLng(home);try{localStorage.setItem('home',JSON.stringify(home))}catch(_){}});
+
+/* Супутниковий режим: знімки Esri + підписи міст/сіл (CARTO, мова з OSM) */
+let OBL_DARK={fill:false,color:'#0c0e12',weight:2,opacity:1};const OBL_SAT={fill:false,color:'#fff',weight:1.6,opacity:.75};
+let obl=null;
+map.createPane('labels');const lp=map.getPane('labels');lp.style.zIndex=450;lp.style.pointerEvents='none';
+const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const EOX='https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2021_3857/default/g/{z}/{y}/{x}.jpg'; // запасні знімки без ключа (Sentinel-2)
+const imagery=L.tileLayer(ESRI,{maxNativeZoom:17,maxZoom:17});
+let imgErr=0,eox=false;
+imagery.on('tileerror',()=>{if(!eox&&++imgErr>=6){eox=true;imagery.options.maxNativeZoom=13;imagery.setUrl(EOX);$('at').textContent='Imagery: Sentinel-2 cloudless by EOX (Contains modified Copernicus Sentinel data)'}});
+/* Підписи населених пунктів (власні дані, без зовнішніх сервісів): міста → селища → села залежно від наближення.
+   Працюють і на темній мапі, і на супутнику; файл settlements.json вантажиться, коли потрібні міста. */
+const cityLayer=L.layerGroup().addTo(map);let SET=null,setLoading=false;
+function updCities(){
+  const z=map.getZoom();cityLayer.clearLayers();
+  if(z<7||!S.cityLbl)return;
+  if(!SET){if(!setLoading){setLoading=true;fetch('settlements.json').then(r=>r.json()).then(d=>{SET=d;updCities()}).catch(()=>{setLoading=false})}return}
+  const bd=map.getBounds().pad(.1),used=new Set(),out=[];
+  const lists=z<9?[['m',70,'clbl']]:z<10.5?[['m',999,'clbl']]:z<12?[['m',999,'clbl'],['x',999,'clbl'],['c',z<11?40:120,'vlbl']]:[['m',999,'clbl'],['x',999,'clbl'],['c',999,'vlbl']];
+  for(const [k,lim,cls] of lists){
+    const src=SET[k];let n=0;
+    const vis=[];for(const r of src)if(bd.contains([r[1],r[2]]))vis.push(r);
+    if(k!=='m')vis.sort((a,b)=>b[3]-a[3]);
+    for(const r of vis){
+      if(n>=lim)break;
+      const p=map.latLngToContainerPoint([r[1],r[2]]),key=Math.floor(p.x/(cls==='vlbl'?80:100))+':'+Math.floor(p.y/(cls==='vlbl'?16:20));
+      if(used.has(key))continue;used.add(key);n++;
+      out.push(L.marker([r[1],r[2]],{interactive:false,icon:L.divIcon({className:'',iconSize:[0,0],html:`<div class="${cls}">${r[0]}</div>`})}));
+    }
+  }
+  out.forEach(m=>cityLayer.addLayer(m));
+}
+map.on('zoomend moveend',updCities);
+function setSat(on){
+  sat=on;BASE=on?BASE_SAT:BASE_DARK;
+  on?imagery.addTo(map):imagery.remove();
+  document.body.classList.toggle('satmode',on);$('sat').classList.toggle('on',on);
+  obl&&obl.setStyle(on?OBL_SAT:OBL_DARK);
+  render();farCls();updCities();
+  try{localStorage.setItem('sat',on?'1':'0')}catch(_){}
+}
+const farCls=()=>document.body.classList.toggle('far',map.getZoom()>=8);
+map.on('zoomend',farCls);
+$('sat').onclick=()=>setSat(!sat);
+
+const lab=(ll,t,c='lbl')=>L.marker(ll,{interactive:false,icon:L.divIcon({className:'',iconSize:[0,0],html:`<div class="${c}">${t}</div>`})}).addTo(map);
+const fs=()=>document.documentElement.style.setProperty('--fs',Math.max(9,Math.min(16,map.getZoom()*2-1))*S.fscale/100+'px');
+map.on('zoomend',fs);fs();
+
+/* ---------- Панель «Вигляд» ---------- */
+const ACCS=['#4f8fe0','#2ec4b6','#a78bfa','#ff9f43','#ff6b9d','#9be564'];
+const UI=[['Тема',[['theme','seg',[['auto','Авто'],['light','☀ Світла'],['dark','☾ Темна']]],['accent','acc']]],
+ ['Значки',[['isz','range','Розмір',20,64],['iconBg','tog','Круглий фон значка'],['pulse','tog','Пульсація нових'],['badge','tog','Лічильник групи (2×)'],['trails','seg',[['off','Без ліній'],['fast','Ракети'],['all','Усі']],'Лінії курсу'],['regZone','tog','Зона, якщо відома лише область']]],
+ ['Цілі',[['tShahed','tog','Шахеди (гвинтові)'],['tJet','tog','Реактивні шахеди'],['tBoom','tog','Вибухи'],['cred','tog','Яскравість за достовірністю (кількість каналів)'],['ballMin','seg',[[1,'1'],[2,'2'],[3,'3']],'Балістика: мін. каналів для банера і значка'],['tMissile','tog','Ракети'],['tBallistic','tog','Балістика'],['onlyAlert','tog','Лише там, де є тривога'],['life','seg',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[30,'30 хв']],'Скільки лишається на мапі'],['cShahed','col','Колір шахеда'],['cJet','col','Колір реактивного'],['cBoom','col','Колір вибухів'],['cMissile','col','Колір ракети'],['cBallistic','col','Колір балістики']]],
+ ['Зони тривог',[['cYellow','col','Жовтий рівень'],['cRed','col','Червоний рівень'],['cArt','col','Артобстріл'],['zop','range','Насиченість, %',30,100],['raionB','tog','Межі районів']]],
+ ['Підписи',[['cityLbl','tog','Міста й села'],['oblLbl','tog','Назви областей'],['fscale','range','Розмір шрифту, %',70,150],['stats','tog','Лічильники зверху'],['legend','tog','Легенда']]],
+ ['Балістика',[['ballBanner','tog','Банер «балістична загроза»'],['ballSound','tog','Звуковий сигнал']]]];
+const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const THEMEDEF={cYellow:'--y1',cRed:'--r1',cArt:'--a1'};
+$('pn').innerHTML=UI.map(([g,cs])=>`<div class="grp">${g}</div>`+cs.map(([k,t,a,b,c])=>{
+  if(t==='acc')return`<div id="acc" class="c" style="justify-content:flex-start;flex-wrap:wrap;gap:9px">${ACCS.map(x=>`<i data-c="${x}" style="background:${x}" title="${x}"></i>`).join('')}<input type="color" data-k="accent" title="Свій колір"></div>`;
+  if(t==='seg')return`<div class="c cs"><span>${b||'Режим'}</span><div class="seg" data-k="${k}">${a.map(([v,n])=>`<button data-v="${v}">${n}</button>`).join('')}</div></div>`;
+  if(t==='tog')return`<div class="c"><span>${a}</span><button class="tg" data-k="${k}"></button></div>`;
+  if(t==='range')return`<div class="c"><span>${a}</span><input type="range" data-k="${k}" min="${b}" max="${c}"></div>`;
+  return`<div class="c"><span>${a}</span><span><input type="color" data-k="${k}"><button class="rs" data-rs="${k}" title="Типовий колір">↺</button></span></div>`}).join('')).join('')
+ +`<div class="grp">Канали Telegram <span id="chn"></span></div><div id="chl"></div><div class="c"><input type="text" id="chi" placeholder="@канал або t.me/назва"><button id="cha">＋</button></div><div class="c"><button id="chr" style="flex:1">Типові канали</button><button id="rst" style="flex:1">Скинути вигляд</button></div>`;
+const lightMQ=window.matchMedia?matchMedia('(prefers-color-scheme: light)'):null;
+const effTheme=()=>S.theme==='auto'?(lightMQ&&lightMQ.matches?'light':'dark'):S.theme;
+const shade=(h,f)=>'#'+[1,3,5].map(i=>Math.round(parseInt(h.substr(i,2),16)*f).toString(16).padStart(2,'0')).join('');
+function applyTheme(){
+  const r=document.documentElement;r.setAttribute('data-theme',effTheme());
+  r.style.setProperty('--accent',S.accent);
+  const n=parseInt(S.accent.slice(1),16);r.style.setProperty('--on-accent',(.299*(n>>16)+.587*((n>>8)&255)+.114*(n&255))>165?'#10141b':'#fff');
+  r.style.setProperty('--isz',S.isz+'px');
+  r.style.setProperty('--c-shahed',S.cShahed);r.style.setProperty('--c-missile',S.cMissile);r.style.setProperty('--c-ballistic',S.cBallistic);r.style.setProperty('--c-jet',S.cJet);r.style.setProperty('--c-boom',S.cBoom);
+  const z=(c,v1,v2)=>c?[c,shade(c,.72)]:[cssv(v1),cssv(v2)];
+  COL={yellow:z(S.cYellow,'--y1','--y2'),red:z(S.cRed,'--r1','--r2'),art:z(S.cArt,'--a1','--a2')};
+  BASE_DARK={fillColor:cssv('--poly'),fillOpacity:1,color:cssv('--polyb'),weight:S.raionB?.8:0};
+  OBL_DARK={fill:false,color:cssv('--oblb'),weight:effTheme()==='light'?1.7:2,opacity:1};TRACK=cssv('--track')||'#fff';
+  BASE=sat?BASE_SAT:BASE_DARK;obl&&obl.setStyle(sat?OBL_SAT:OBL_DARK);
+  document.body.classList.toggle('no-obl',!S.oblLbl);$('lg').style.display=S.legend?'':'none';
+  const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.setAttribute('content',cssv('--bg'));
+  fs();syncPanel();updCities();render();
+}
+function syncPanel(){
+  for(const e of $('pn').querySelectorAll('[data-k]')){const k=e.dataset.k,v=S[k];
+    if(e.classList.contains('seg'))for(const b of e.children)b.classList.toggle('on',String(b.dataset.v)===String(v));
+    else if(e.classList.contains('tg'))e.classList.toggle('on',!!v);
+    else if(e.type==='color')e.value=v||(THEMEDEF[k]?cssv(THEMEDEF[k]):'#888888');
+    else if(e.type==='range')e.value=v}
+  for(const i of $('acc').querySelectorAll('i'))i.classList.toggle('on',i.dataset.c===S.accent);
+}
+const setS=(k,v)=>{S[k]=v;saveS();applyTheme()};
+$('pn').addEventListener('click',e=>{const t=e.target;
+  if(t.dataset.c)return setS('accent',t.dataset.c);
+  if(t.classList.contains('tg'))return setS(t.dataset.k,!S[t.dataset.k]);
+  if(t.dataset.rs)return setS(t.dataset.rs,'');
+  const sg=t.closest('.seg');if(sg&&t.dataset.v!==undefined){const v=t.dataset.v;return setS(sg.dataset.k,isNaN(v)?v:+v)}
+  if(t.id==='rst'){S={...DEF};saveS();applyTheme()}
+  if(t.id==='cha'){const v=$('chi').value.trim();if(v){saveCh([...CHS.map(c=>c.ch),v]);$('chi').value=''}}
+  if(t.id==='chr')saveCh(null,true);
+  if(t.dataset.ch)saveCh(CHS.map(c=>c.ch).filter(c=>c!==t.dataset.ch))});
+$('pn').addEventListener('input',e=>{const t=e.target,k=t.dataset.k;if(!k)return;
+  if(t.type==='color')setS(k,t.value);else if(t.type==='range'){S[k]=+t.value;saveS();applyTheme()}});
+/* Канали Telegram: список зі станом; редагувати можна лише з того ж комп'ютера, де запущено сервер */
+let CHS=[],CHEDIT=false;
+async function loadCh(){try{const j=await (await fetch('/api/channels')).json();CHS=j.channels;CHEDIT=j.canEdit;
+  $('chn').textContent='('+CHS.length+')';$('chr').textContent='Типові канали ('+((j.defaults||[]).length)+')';
+  $('chl').innerHTML=CHS.map(c=>`<div class="chr"><span class="${c.ok?'ok':c.tried?'bad':''}">${c.ok?'✓':c.tried?'✗':'…'}</span><span class="n" title="${esc(c.err||c.title||'')}">@${esc(c.ch)}${c.err?' — '+esc(c.err):''}</span>${CHEDIT?`<button data-ch="${esc(c.ch)}" title="Прибрати">✕</button>`:''}</div>`).join('');
+  for(const id of ['chi','cha','chr'])$(id).style.display=CHEDIT?'':'none'}catch(e){}}
+async function saveCh(list,reset){try{await fetch('/api/channels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(reset?{reset:true}:{channels:list})})}catch(e){}setTimeout(loadCh,900)}
+$('cfg').onclick=()=>{$('pn').classList.toggle('open');if($('pn').classList.contains('open'))loadCh()};
+document.addEventListener('click',e=>{if(!e.target.closest('#pn,#cfg'))$('pn').classList.remove('open')});
+if(lightMQ&&lightMQ.addEventListener)lightMQ.addEventListener('change',()=>{if(S.theme==='auto')applyTheme()});
+if(!['auto','light','dark'].includes(S.theme))S.theme='dark';
+applyTheme();
+
+Promise.all([fetch('raions.json').then(r=>r.json()),fetch('oblasts.json').then(r=>r.json()),fetch('kyiv.json').then(r=>r.json())]).then(([ra,ob,ky])=>{
+  L.geoJSON(ra,{style:()=>BASE,onEachFeature:(f,l)=>{
+    R.push({k:f.properties.o+'|'+f.properties.n,o:f.properties.o,l,z:mkZone(f.geometry)});
+  }}).addTo(map);
+  obl=L.geoJSON(ob,{style:OBL_DARK,interactive:false}).addTo(map);
+  for(const f of ob.features){const n=f.properties.name;lab(f.properties.c,n.startsWith('Автономна')?'АР Крим':n.replace(' область',''))}
+  kyivZ=mkZone(ky.features[0].geometry);kyiv=L.geoJSON(ky,{style:()=>BASE}).addTo(map); // місто Київ — звичайний полігон, заливається як усі райони
+  lab([50.46,30.52],'Київ','clbl');lab([44.6,33.5],'Севастополь','clbl');
+  if(SHOW_HOME)hm.addTo(map);
+  try{if(localStorage.getItem('sat')==='1')setSat(true)}catch(_){}
+  live();setInterval(live,20000);
+});
+
+
+/* ---------- Стрічка повідомлень ---------- */
+var fdOpen=false,fdType='all',fdAt=0,FEEDIT=[];
+const FT=[['all','Усі'],['shahed','Шахеди'],['jet','Реактивні'],['missile','Ракети'],['ballistic','Балістика'],['boom','Вибухи']];
+const hmm=t=>pad(new Date(t).getHours())+':'+pad(new Date(t).getMinutes());
+function feedItems(){
+  const RT=mode==='live'?REF:T,out=[];
+  for(const h of threats){if(h.t>RT)continue;
+    const src=h.src&&h.src.length?h.src:[{ch:h.ch,id:(h.id||'').split('#')[0],t:h.t,text:h.text}];
+    for(const s of src){if(s.t>RT||(fdType!=='all'&&h.type!==fdType))continue;out.push({h,s})}}
+  return out.sort((a,b)=>b.s.t-a.s.t).slice(0,80);
+}
+function renderFeed(force){
+  if(!fdOpen)return;const n=Date.now();if(!force&&n-fdAt<1500)return;fdAt=n;
+  $('fdf').innerHTML=FT.map(([k,t])=>`<button data-k="${k}" class="${k===fdType?'on':''}">${t}</button>`).join('');
+  FEEDIT=feedItems();
+  $('fdl').innerHTML=FEEDIT.length?FEEDIT.map((x,i)=>`<div class="fi" data-i="${i}"><div class="m"><span class="ico ${x.h.type}"><svg viewBox="0 0 24 24">${SVG[x.h.type]}</svg></span><b>${TNAME[x.h.type]||''}</b> · <a href="https://t.me/${esc(x.s.id)}" target="_blank" rel="noopener">@${esc(x.s.ch||'')}</a> · ${hmm(x.s.t)}</div>${esc(x.s.text||'').slice(0,220)}</div>`).join(''):'<div style="color:var(--mut);font-size:13px">Поки немає повідомлень</div>';
+}
+function flyToThreat(h){
+  const e=MK.get(h.id),p=e?e.cur:h.pts[0];
+  map.flyTo(p,Math.max(map.getZoom(),9),{duration:.8});
+  setTimeout(()=>{const e2=MK.get(h.id);e2&&e2.m.openPopup()},900);
+}
+$('fdf').onclick=e=>{const b=e.target.closest('button');if(!b)return;fdType=b.dataset.k;renderFeed(true)};
+$('fdl').onclick=e=>{if(e.target.closest('a'))return;const it=e.target.closest('.fi');if(!it)return;const x=FEEDIT[+it.dataset.i];if(x)flyToThreat(x.h)};
+const closePanels=()=>{$('pn').classList.remove('open');$('fd').classList.remove('open');fdOpen=false;$('sr').classList.remove('open')};
+$('fdb').onclick=()=>{const o=!fdOpen;closePanels();if(o){fdOpen=true;$('fd').classList.add('open');renderFeed(true)}};
+
+/* ---------- Пошук населеного пункту ---------- */
+var PLACESET=null,srSel=0,srRes=[];
+const nq=s=>String(s).toLowerCase().replace(/[’ʼ`']/g,'').trim();
+async function loadSet(){
+  if(PLACESET)return PLACESET;
+  try{const d=await (await fetch('settlements.json')).json();PLACESET=[];for(const k in d)for(const r of d[k])PLACESET.push({n:r[0],la:r[1],lo:r[2],p:r[3]||0,l:nq(r[0])})}catch(e){PLACESET=[]}
+  return PLACESET;
+}
+function oblOf(la,lo){for(const r of R)if(nearZone(la,lo,[r.z],0))return r.o;if(kyivZ&&nearZone(la,lo,[kyivZ],0))return KYIV;return''}
+async function doSearch(){
+  const q=nq($('sri').value);if(q.length<2){$('srl').innerHTML='';srRes=[];return}
+  const all=await loadSet(),a=[],b=[];
+  for(const x of all){if(x.l.startsWith(q))a.push(x);else if(q.length>2&&x.l.includes(q))b.push(x)}
+  srRes=[...a.sort((x,y)=>y.p-x.p),...b.sort((x,y)=>y.p-x.p)].slice(0,8);srSel=0;
+  $('srl').innerHTML=srRes.length?srRes.map((x,i)=>`<div class="si${i?'':' sel'}" data-i="${i}"><b>${esc(x.n)}</b><small>${esc(oblOf(x.la,x.lo)||'')}${x.p?' · ~'+Math.round(x.p)+' тис.':''}</small></div>`).join(''):'<div style="color:var(--mut);font-size:13px;padding:6px">Нічого не знайдено</div>';
+}
+let srPin=null,srTm=0;
+function goPlace(x){
+  if(!x)return;closePanels();
+  map.flyTo([x.la,x.lo],x.p>20?11:12,{duration:1});
+  if(srPin)map.removeLayer(srPin);clearTimeout(srTm);
+  srPin=L.circleMarker([x.la,x.lo],{radius:11,color:'#fff',weight:2,fillColor:cssv('--accent')||'#4f8fe0',fillOpacity:.35,interactive:false}).bindTooltip(x.n,{permanent:true,direction:'top',offset:[0,-8]}).addTo(map);
+  srTm=setTimeout(()=>{srPin&&map.removeLayer(srPin);srPin=null},9000);
+}
+$('srb').onclick=()=>{const o=!$('sr').classList.contains('open');closePanels();if(o){$('sr').classList.add('open');$('sri').focus();$('sri').select();loadSet()}};
+$('sri').oninput=doSearch;
+$('sri').onkeydown=e=>{
+  const items=$('srl').querySelectorAll('.si');
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!items.length)return;srSel=(srSel+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;items.forEach((n,i)=>n.classList.toggle('sel',i===srSel))}
+  else if(e.key==='Enter')goPlace(srRes[srSel]);
+  else if(e.key==='Escape')closePanels();
+};
+$('srl').onclick=e=>{const it=e.target.closest('.si');if(it)goPlace(srRes[+it.dataset.i])};
+$('cfg').addEventListener('click',()=>{$('fd').classList.remove('open');fdOpen=false;$('sr').classList.remove('open')});
+
+/* ---------- PWA: офлайн-оболонка ---------- */
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>

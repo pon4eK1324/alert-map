@@ -138,11 +138,30 @@ function gazPlaces(line, covered, anchors, hint) {
   }
   return out;
 }
+// Прізвища посадовців, які цитують канали («– Терехов», «Синєгубов:»): це не населені пункти, хоча в газетирі є села Терехов.
+// Заміняємо пробілами тієї ж довжини, щоб індекси в рядку не зсунулись.
+const OFFICIALS = /(?<![А-ЯІЇЄҐа-яіїєґ'’ʼ])(?:Терехов|Синєгубов|Кличко|Ткаченко|Федоров|Лисак|Філатов|Прокудін|Кім)[а-яіїєґ]{0,3}(?![А-ЯІЇЄҐа-яіїєґ'’ʼ])/g;
+// Райони міст. «Київський район» — це Харків, Одеса, Полтава…, але не Київ (у Києві такого району немає).
+// Назви, що є лише в Харкові, завжди Харків; назви, що є в кількох містах, — Харків лише в харківському контексті (підказка каналу або «Харків» у тексті).
+const KH_ONLY = /(?<![а-яіїєґ'’])(?:слобідськ|салтівськ|холодногірськ|новобаварськ|немишлянськ|основ['’ʼ]янськ)[а-яіїєґ]*\s+район/i;
+const KH_SHARED = /(?<![а-яіїєґ'’])(?:київськ|шевченківськ|індустріальн)[а-яіїєґ]*\s+район/i;
+const KYIV_RAION = /(?<![а-яіїєґ'’])київськ[а-яіїєґ]*\s+район/i;
+const OTHER_CITY = /Дніпр|Одес|Запоріж|Полтав|Миколаїв|Херсон|Київ(?!ськ)|Києв/i;
+const KHR_XY = [49.99, 36.23];
+const khrCtx = (line, hint) => {
+  const hs = !hint ? [] : Array.isArray(hint[0]) ? hint : [hint];
+  return hs.some(h => Math.abs(h[0] - KHR_XY[0]) < 0.6 && Math.abs(h[1] - KHR_XY[1]) < 0.9) || /Харків|Харков/i.test(line);
+};
 // Чи лежить місце q = [la, lo] у межах області g або поруч із нею (запас ~0,5° ≈ 40 км: «ЧЗВ/Житомирщина» — зона на межі областей).
 const inBox = (q, g) => q[0] >= g.b[0] - 0.5 && q[0] <= g.b[1] + 0.5 && q[1] >= g.b[2] - 0.5 && q[1] <= g.b[3] + 0.5;
 function placesRaw(line, hint) {
-  line = String(line).replace(/[ʼ`‘]/g, '’');
+  line = String(line).replace(/[ʼ`‘]/g, '’').replace(OFFICIALS, m => ' '.repeat(m.length));
   const f = [], covered = [], regs = [];
+  const dm = KH_ONLY.exec(line) || (khrCtx(line, hint) && !OTHER_CITY.test(line) ? KH_SHARED.exec(line) : null) || KYIV_RAION.exec(line);
+  if (dm) { // район міста: у харківському контексті — Харків, інакше точку не ставимо (і точно не Київ)
+    if (KH_ONLY.test(dm[0]) || (khrCtx(line, hint) && !OTHER_CITY.test(line) && KH_SHARED.test(dm[0]))) f.push([dm.index, KHR_XY[0], KHR_XY[1], false]);
+    regs.push([dm.index, dm.index + dm[0].length]); covered.push([dm.index, dm.index + dm[0].length + 2]);
+  }
   for (const [stem, re] of REGIONS) {
     const m = re.exec(line), g = m && regionGeo(stem); if (!g) continue;
     const [dl, dn] = dirShift(line, m, g);

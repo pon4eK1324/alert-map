@@ -30,7 +30,7 @@ DEFAULT_CHANNELS.splice(0, DEFAULT_CHANNELS.length, ...DEFAULT_CHANNELS.filter((
 let CHANNELS = (process.env.TG_CHANNELS ? process.env.TG_CHANNELS.split(',') : DEFAULT_CHANNELS).map(cleanCh).filter(Boolean);
 const KEEP = 48 * 3600e3;
 const TTL = 10 * 60e3; // ціль зникає з мапи, якщо про неї 10 хвилин нічого не пишуть
-const FADE_TIME = 3 * 60e3; // останні 3 хвилини до кінця TTL, коли ціль стає напівпрозорою
+const FADE_TIME = 60e3; // остання хвилина до кінця TTL: ціль плавно стає прозорою
 let DATA = path.join(__dirname, 'data'), TOKEN = process.env.ALERTS_TOKEN || '';
 let alerts = [], ballWarn = [], source = 'очікування', snaps = [], threats = new Map(), geoErr = '';
 const chStat = {}; // стан кожного каналу: { ok, n, at, err, tried, fails, until, busy }
@@ -448,7 +448,7 @@ const recent = (ms, ref = Date.now()) => [...threats.values()]
   .map(t => {
     const age = ref - t.t, timeLeft = TTL - age;
     let opacity = 1.0;
-    if (timeLeft <= FADE_TIME && timeLeft > 0) opacity = Math.max(0.3, +(timeLeft / FADE_TIME).toFixed(2));
+    if (timeLeft <= FADE_TIME && timeLeft > 0) opacity = Math.max(0.02, +(timeLeft / FADE_TIME).toFixed(2));
 
     let est;
     if (t.pts.length >= 2 && !t.reg && t.type !== 'boom') {

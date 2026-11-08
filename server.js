@@ -343,6 +343,8 @@ async function tgGet(ch) {
   }
   throw last;
 }
+const decodeHtml = x => x.replace(/&#x([0-9a-f]+);/gi, (_, h) => cp(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => cp(+d)).replace(/&nbsp;/g, ' ').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const cp = n => { try { return String.fromCodePoint(n); } catch (e) { return ''; } };
 async function pollTG(ch) {
   const st = chStat[ch] = chStat[ch] || { ok: false, n: 0 };
   st.busy = true;
@@ -356,7 +358,7 @@ async function pollTG(ch) {
       const id = (p.match(/data-post="([^"]+)"/) || [])[1], ts = (p.match(/<time[^>]*datetime="([^"]+)"/) || [])[1];
       const m = p.match(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/);
       if (!id || !ts || !m) continue;
-      const text = m[1].replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#0?39;/g, "'").replace(/&gt;/g, '>').replace(/&lt;/g, '<');
+      const text = decodeHtml(m[1].replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, ''));
       let carry = null;
       const tms = Date.parse(ts);
       text.split('\n').forEach((line, i) => {
@@ -557,5 +559,5 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
-exports._t = { noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
+exports._t = { decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
 if (require.main === module) exports.start();

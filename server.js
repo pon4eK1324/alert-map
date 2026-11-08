@@ -292,7 +292,7 @@ function addThreat(o) {
     if (x.type !== o.type || x.dead || Math.abs(x.t - o.t) > TTL) continue;
     // радіус злиття росте з часом між постами: ціль за кілька хвилин встигає відлетіти далі
     const dtm = Math.abs(x.t - o.t) / 60e3;
-    const rad = o.type === 'boom' ? 0.25 : Math.min(1, 0.25 + (SPEED[o.type] || SPEED.shahed) * dtm * 0.7);
+    const rad = o.type === 'boom' ? 0.25 : Math.min(0.8, 0.15 + (SPEED[o.type] || SPEED.shahed) * dtm * 0.5);
     if (dist(x.pts[x.pts.length - 1], o.pts[o.pts.length - 1]) < rad) {
       join(x);
       if (o.t >= x.t) { x.t = o.t; if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; } x.text = o.text; x.ch = o.ch; if (o.n) x.n = o.n; }

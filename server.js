@@ -102,7 +102,7 @@ const GAZ_STOP = new Set([
   'тактична', 'гучний', 'хлопок', 'детонація', 'приліт', 'влучання'
 ].map(stemOf));
 
-const CUE = /(?:(?<![а-яіїєґ'’])(?:на|до|повз|біля|через|над|від|курс\S*|напрямк\S*|район\S*|р-н\S*|в|у|з|із)|→|➡)\s*(?:\S{1,12}\s+)?$/i;
+const CUE = /(?:[:：—–]|(?<![а-яіїєґ])(?:бпла|шахед\S*|дрон\S*|ракет\S*|ціл[іьи]\S*)|(?<![а-яіїєґ'’])(?:на|до|повз|біля|через|над|від|курс\S*|напрямк\S*|район\S*|р-н\S*|в|у|з|із)|→|➡)\s*(?:\S{1,12}\s+)?$/i;
 function gazPlaces(line, covered, anchors, hint) {
   const out = [], W = /(?<![А-ЯІЇЄҐа-яіїєґ'’ʼ-])[А-ЯІЇЄҐ][а-яіїєґ'’ʼ]{2,}(?:[-\s][А-ЯІЇЄҐ][а-яіїєґ'’ʼ]{2,}){0,2}(?![а-яіїєґ'’ʼ])/g;
   let m, prevOk = false, anchor = anchors[anchors.length - 1];
@@ -283,6 +283,8 @@ const BULLET = /^[\s▪️•🔹🔸🔻🔺➡️→▶️\-–—*·]+/u;
 const seen = new Set();
 const SPEED = { shahed: 0.03, jet: 0.06, missile: 0.12, ballistic: 0.4 }, REACH0 = 0.35;
 
+const orphans = new Map();
+function noCourse(ref = Date.now()) { let n = 0; for (const [k, v] of orphans) { if (ref - v.t > TTL) orphans.delete(k); else n += v.n; } return n; }
 function addThreat(o) {
   const src = { ch: o.ch, id: o.post, key: o.id, t: o.t, text: o.text };
   const join = x => { x.src = x.src || []; if (!x.src.some(a => a.key === src.key)) x.src.push(src); };
@@ -311,6 +313,7 @@ function addThreat(o) {
       else if (o.n && !best.n) best.n = o.n;
       return;
     }
+    if (o.type !== 'boom') orphans.set(o.type + '@' + o.pts[0].map(v => v.toFixed(1)).join(','), { t: o.t, n: o.n || 1 }); // «курс на X» без відомого місця: не малюємо, лише рахуємо
     return;
   }
   o.src = [src]; o.t0 = o.t; threats.set(o.id, o);
@@ -380,6 +383,7 @@ async function pollTG(ch) {
           const isFrom = p => /(?:^|[\s(])(?:з|із|зі|від|з\s+боку|із\s+боку|з\s+напрямку)\s*$/i.test(bef(p));
           if (isTo(raw[0]) && isFrom(raw[raw.length - 1])) raw.reverse();
         }
+        for (let i = raw.length - 1; i > 0 && raw.length > 1; i--) if (raw[i][2] && line[raw[i][3] - 1] === '(' && raw.some((q, j) => j !== i && !q[2])) raw.splice(i, 1);
         const pts = raw.map(p => [p[0], p[1]]);
         if (!pts.length || seen.has(key)) return;
         const L = lastK[ch] || lastK['*'];
@@ -480,7 +484,7 @@ const srv = http.createServer((req, res) => {
   let u; try { u = new URL(req.url.replace(/^\/+/, '/'), 'http://x'); } catch (e) { res.writeHead(400); return res.end('Bad request'); }
   const json = o => { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(JSON.stringify(o)); };
   if (u.pathname === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); return res.end('ok'); }
-  if (u.pathname === '/api/state') { const hl = health(), ref = refTime(hl); return json({ now: Date.now(), ref, stale: hl.stale, lastGood, alerts, threats: recent(35 * 60e3, ref), ball: ballRecent(BALL_TTL * 2, ref), ballTtl: BALL_TTL, source, ttl: TTL, diag: diag() }); }
+  if (u.pathname === '/api/state') { const hl = health(), ref = refTime(hl); return json({ now: Date.now(), ref, stale: hl.stale, lastGood, alerts, threats: recent(35 * 60e3, ref), ball: ballRecent(BALL_TTL * 2, ref), ballTtl: BALL_TTL, source, ttl: TTL, noCourse: noCourse(ref), diag: diag() }); }
   if (u.pathname === '/api/cities') return json(CITIES);
   if (u.pathname === '/api/channels') {
     const canEdit = isLocal(req);
@@ -553,5 +557,5 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
-exports._t = { gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
+exports._t = { noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
 if (require.main === module) exports.start();

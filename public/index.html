@@ -465,13 +465,39 @@ const farCls=()=>document.body.classList.toggle('far',map.getZoom()>=8);
 map.on('zoomend',farCls);
 $('sat').onclick=()=>setSat(!sat);
 /* вулиці/річки/ліси під зонами при наближенні (zoom >= 8): підкладка Esri Gray Canvas без підписів, підписи малюємо самі */
-var STREETS,STR=false;
+var STREETS,STR=false,UA_GEO=null;
+/* Плитки «вулиці/річки/ліси» малюються лише в межах України: кожну плитку обрізаємо по зовнішніх контурах областей (oblasts.json). */
+const UA_CLIP={};
+function uaPath(z){
+  if(UA_CLIP[z])return UA_CLIP[z];if(!UA_GEO)return null;
+  const path=new Path2D();let x0=1e12,y0=1e12,x1=-1e12,y1=-1e12;
+  for(const f of UA_GEO.features){const g=f.geometry,polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+    for(const poly of polys){const ring=poly[0];if(!ring)continue;
+      ring.forEach((c,i)=>{const q=L.CRS.EPSG3857.latLngToPoint(L.latLng(c[1],c[0]),z);
+        i?path.lineTo(q.x,q.y):path.moveTo(q.x,q.y);
+        if(q.x<x0)x0=q.x;if(q.x>x1)x1=q.x;if(q.y<y0)y0=q.y;if(q.y>y1)y1=q.y});
+      path.closePath()}}
+  return UA_CLIP[z]={path,x0,y0,x1,y1};
+}
+const UATiles=L.TileLayer.extend({
+  createTile(coords,done){
+    const sz=this.getTileSize(),cv=document.createElement('canvas');cv.width=sz.x;cv.height=sz.y;
+    const clip=uaPath(coords.z),ox=coords.x*sz.x,oy=coords.y*sz.y;
+    // дані кордону ще не завантажені або плитка повністю поза Україною — лишаємо порожньою
+    if(!clip||ox>clip.x1||ox+sz.x<clip.x0||oy>clip.y1||oy+sz.y<clip.y0){setTimeout(()=>done(null,cv),0);return cv}
+    const img=new Image();
+    img.onload=()=>{const c=cv.getContext('2d');c.save();c.translate(-ox,-oy);c.clip(clip.path);c.setTransform(1,0,0,1,0,0);c.drawImage(img,0,0,sz.x,sz.y);c.restore();done(null,cv)};
+    img.onerror=()=>done(new Error('tile'),cv);
+    img.src=this.getTileUrl(coords);
+    return cv;
+  }
+});
 const stUrl=()=>'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/'+(effTheme()==='light'?'World_Light_Gray_Base':'World_Dark_Gray_Base')+'/MapServer/tile/{z}/{y}/{x}';
 function curBase(){return sat?BASE_SAT:STR?{...BASE_DARK,fillOpacity:.12}:BASE_DARK}
 function updStreets(quiet){
   try{
     const want=!sat&&map.getZoom()>=8,u=stUrl();
-    if(!STREETS)STREETS=L.tileLayer(u,{maxNativeZoom:16,maxZoom:17});
+    if(!STREETS)STREETS=new UATiles(u,{maxNativeZoom:16,maxZoom:17});
     else if(STREETS._u!==u)STREETS.setUrl(u);
     STREETS._u=u;const was=STR;STR=want;
     want?STREETS.addTo(map):STREETS.remove();
@@ -554,7 +580,7 @@ if(lightMQ&&lightMQ.addEventListener)lightMQ.addEventListener('change',()=>{if(S
 if(!['auto','light','dark'].includes(S.theme))S.theme='dark';
 applyTheme();
 
-Promise.all([fetch('raions.json').then(r=>r.json()),fetch('oblasts.json').then(r=>r.json()),fetch('kyiv.json').then(r=>r.json())]).then(([ra,ob,ky])=>{
+Promise.all([fetch('raions.json').then(r=>r.json()),fetch('oblasts.json').then(r=>r.json()),fetch('kyiv.json').then(r=>r.json())]).then(([ra,ob,ky])=>{UA_GEO=ob;if(STREETS)STREETS.redraw();
   L.geoJSON(ra,{style:()=>BASE,onEachFeature:(f,l)=>{
     R.push({k:f.properties.o+'|'+f.properties.n,o:f.properties.o,l,z:mkZone(f.geometry)});
   }}).addTo(map);

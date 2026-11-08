@@ -153,3 +153,27 @@ test('кількість у групі: максимум серед каналі
   const y = [...threats.values()][0]; assert.strictEqual(y.n, 2); assert.strictEqual(y.nMin, true);
   threats.clear();
 });
+
+// ---- Регресія: «Влучання… у Київському районі, – Терехов» (Харків) не має ставити значки під Києвом і Бердичевом ----
+test('район міста і прізвище посадовця не стають місцем: Харків, а не Київ і не село Терехов', () => {
+  const near = (p, la, lo) => Math.abs(p[0] - la) < 0.05 && Math.abs(p[1] - lo) < 0.05;
+  const KHR = [[49.99, 36.23, 3]];
+  const a = t.placesRaw('Влучання ударного дрону в Київському районі, – Терехов.', KHR);
+  assert.strictEqual(a.length, 1); assert.ok(near(a[0], 49.99, 36.23), 'Київський район Харкова');
+  assert.deepStrictEqual(t.placesRaw('Влучання ударного дрону в Київському районі, – Терехов.'), [], 'без харківського контексту — краще без значка, ніж під Києвом');
+  const b = t.placesRaw('Ще одне влучання Бандеролі було у Слобідському районі, – Терехов.');
+  assert.strictEqual(b.length, 1); assert.ok(near(b[0], 49.99, 36.23));
+  const c = t.placesRaw('Влучання в Шевченківському районі Києва', KHR);
+  assert.strictEqual(c.length, 1); assert.ok(near(c[0], 50.45, 30.52), 'Шевченківський район Києва лишається Києвом');
+  assert.strictEqual(t.placesRaw('Влучання у Харкові, – Терехов').length, 1);
+});
+
+test('пост харківського каналу про Київський район дає один значок у Харкові', async () => {
+  t.threats.clear(); delete t.lastPos.truexakharkiv;
+  await feed('truexakharkiv', [[1, 'Влучання ударного дрону в Київському районі, – Терехов.']]);
+  const all = [...t.threats.values()];
+  assert.strictEqual(all.length, 1);
+  assert.strictEqual(all[0].type, 'boom');
+  assert.ok(Math.abs(all[0].pts[0][0] - 49.99) < 0.05 && Math.abs(all[0].pts[0][1] - 36.23) < 0.05);
+  t.threats.clear();
+});

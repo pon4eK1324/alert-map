@@ -326,10 +326,11 @@ function projPos(h){
 const FADE_MS=3*60e3;
 const lifeOf=h=>h.type==='boom'?Math.min(S.life*60e3,15*60e3):S.life*60e3;
 const fadeOf=h=>{const left=lifeOf(h)-(nowT()-h.t);return left>=FADE_MS?1:Math.max(.1,left/FADE_MS)}; // 100% яскравості, згасання лише в останні 3 хв
+function projOff(h){const p=projPos(h);if(!h._N)return p;const z=map.getZoom(),o2=h._i>=6,n=o2?h._N-6:Math.min(h._N,6),i=o2?h._i-6:h._i,rad=isz()*.62*(o2?1.95:1),a=i/n*2*Math.PI+(o2?.5:0),c=map.project(p,z),q=map.unproject(L.point(c.x+Math.cos(a)*rad,c.y+Math.sin(a)*rad),z);return[q.lat,q.lng]}
 function syncMarker(h,b,fade,fresh,cn){
   const sig=[h.type,Math.round(b),isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n:0,S.cred?Math.min(5,cn):0].join('|');
   let e=MK.get(h.id);
-  if(!e){const p=projPos(h);e=MK.set(h.id,{m:L.marker(p,{icon:icon(h,b,fresh,cn),opacity:fade}).bindPopup(popup(h),{maxWidth:340}).addTo(mk),cur:p,sig,h}).get(h.id)}
+  if(!e){const p=projOff(h);e=MK.set(h.id,{m:L.marker(p,{icon:icon(h,b,fresh,cn),opacity:fade}).bindPopup(popup(h),{maxWidth:340}).addTo(mk),cur:p,sig,h}).get(h.id)}
   else{e.h=h;e.m.setOpacity(fade);if(e.sig!==sig){e.m.setIcon(icon(h,b,fresh,cn));e.sig=sig}e.m.setPopupContent(popup(h))}
   e.m.setZIndexOffset(h.type==='ballistic'?1000:h.type==='missile'?500:h.type==='jet'?250:0);
 }
@@ -338,7 +339,7 @@ let lastF=performance.now();
   const dt=Math.min(.25,(t-lastF)/1000);lastF=t;const k=1-Math.exp(-dt*3); // згладжування ~0.3 с
   for(const e of MK.values()){
     const o=(e.h._b??1)*fadeOf(e.h);if(Math.abs(o-(e.op??-1))>.01){e.m.setOpacity(o);e.op=o}
-    const p=projPos(e.h),c=e.cur;
+    const p=projOff(e.h),c=e.cur;
     if(Math.abs(p[0]-c[0])+Math.abs(p[1]-c[1])<1e-7)continue;
     e.cur=[c[0]+(p[0]-c[0])*k,c[1]+(p[1]-c[1])*k];e.m.setLatLng(e.cur);
   }
@@ -370,7 +371,9 @@ function render(){
     const cn=credN(h),cf=1;h._b=1;const fade=Math.max(.02,h._b*fadeOf(h)),b=h.pts.length>1?bearing(a,z):0;
     if(h.pts.length>1&&(S.trails==='all'||(S.trails==='fast'&&h.type!=='shahed')))L.polyline(h.pts,{color:TRACK,weight:1.5,dashArray:'5 6',opacity:.55*fade,interactive:false}).addTo(tg);
     if(h.reg&&S.regZone)L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
-    syncMarker(h,b,fade,mode==='live'&&!STALE&&RT-h.t<60e3,cn);
+    const fr=mode==='live'&&!STALE&&RT-h.t<60e3,N=h.type==='boom'?1:Math.min(h.n||1,10);
+    if(N<2)syncMarker(h,b,fade,fr,cn);
+    else for(let i=0;i<N;i++){const m={...h,id:h.id+'~'+i,n:i===0&&h.n>N?h.n:0,_i:i,_N:N};seen.add(m.id);syncMarker(m,b,fade,fr,cn)} // «N×» → N окремих іконок (не більше 10; решта — числом біля першої)
   }
   for(const [id,e] of MK)if(!seen.has(id)){mk.removeLayer(e.m);MK.delete(id)}
   stats(vis,items);renderBall(RT);renderFeed();

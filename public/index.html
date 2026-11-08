@@ -199,7 +199,7 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
 <div id="sr" class="box"><input id="sri" placeholder="Місто, селище чи село…" autocomplete="off"><div id="srl"></div></div>
 <div id="ballb" class="box"></div>
 <div id="stats"></div>
-<div id="at2">© OpenStreetMap contributors © CARTO</div>
+<div id="at2">Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors</div>
 <div id="at">Imagery © Esri, Maxar, Earthstar Geographics</div>
 <div id="lg" class="box"><button id="lgb">Рівні тривоги</button>
  <div id="lgc">
@@ -464,14 +464,14 @@ function setSat(on){
 const farCls=()=>document.body.classList.toggle('far',map.getZoom()>=8);
 map.on('zoomend',farCls);
 $('sat').onclick=()=>setSat(!sat);
-/* вулиці/річки/ліси під зонами при наближенні (zoom >= 8): підкладка CARTO без підписів, підписи малюємо самі */
+/* вулиці/річки/ліси під зонами при наближенні (zoom >= 8): підкладка Esri Gray Canvas без підписів, підписи малюємо самі */
 var STREETS,STR=false;
-const stUrl=()=>'https://{s}.basemaps.cartocdn.com/'+(effTheme()==='light'?'light_nolabels':'dark_nolabels')+'/{z}/{x}/{y}{r}.png';
+const stUrl=()=>'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/'+(effTheme()==='light'?'World_Light_Gray_Base':'World_Dark_Gray_Base')+'/MapServer/tile/{z}/{y}/{x}';
 function curBase(){return sat?BASE_SAT:STR?{...BASE_DARK,fillOpacity:.12}:BASE_DARK}
 function updStreets(quiet){
   try{
     const want=!sat&&map.getZoom()>=8,u=stUrl();
-    if(!STREETS)STREETS=L.tileLayer(u,{subdomains:'abcd',maxNativeZoom:19,maxZoom:19});
+    if(!STREETS)STREETS=L.tileLayer(u,{maxNativeZoom:16,maxZoom:17});
     else if(STREETS._u!==u)STREETS.setUrl(u);
     STREETS._u=u;const was=STR;STR=want;
     want?STREETS.addTo(map):STREETS.remove();

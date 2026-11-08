@@ -100,3 +100,8 @@ test('перелік сіл після двокрапки розпізнаєть
   loadGeo(); loadGaz();
   assert.ok(placesRaw('БпЛА: Решетилівка, Козельщина').length >= 1);
 });
+
+test('числові HTML-коди (&#33;) та &amp; розкодовуються в тексті поста', () => {
+  const { decodeHtml } = require('../server')._t;
+  assert.strictEqual(decodeHtml('Черкаси&#33; &#x41; &quot;так&quot; &amp;amp;'), 'Черкаси! A "так" &amp;');
+});

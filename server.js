@@ -479,6 +479,7 @@ const MIME = { '.ico': 'image/x-icon', '.jpg': 'image/jpeg', '.jpeg': 'image/jpe
 const srv = http.createServer((req, res) => {
   let u; try { u = new URL(req.url.replace(/^\/+/, '/'), 'http://x'); } catch (e) { res.writeHead(400); return res.end('Bad request'); }
   const json = o => { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(JSON.stringify(o)); };
+  if (u.pathname === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); return res.end('ok'); }
   if (u.pathname === '/api/state') { const hl = health(), ref = refTime(hl); return json({ now: Date.now(), ref, stale: hl.stale, lastGood, alerts, threats: recent(35 * 60e3, ref), ball: ballRecent(BALL_TTL * 2, ref), ballTtl: BALL_TTL, source, ttl: TTL, diag: diag() }); }
   if (u.pathname === '/api/cities') return json(CITIES);
   if (u.pathname === '/api/channels') {
@@ -546,6 +547,10 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   pollAlerts().then(save); setInterval(pollAlerts, 30e3); setInterval(save, 60e3);
   const tick = () => { pollNext(); setTimeout(tick, Math.max(1200, Math.round(POLL_EVERY / Math.max(1, CHANNELS.length)))); };
   warmup().then(tick);
+  // Render (безкоштовний план) присипляє сервіс без вхідних запитів: поки він прокинутий, пінгуємо власну публічну адресу.
+  // Якщо сервіс уже заснув, цей таймер не працює, тому додатково потрібен зовнішній пінг (UptimeRobot / cron-job.org) на /health.
+  const selfUrl = process.env.SELF_PING_URL || process.env.RENDER_EXTERNAL_URL;
+  if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
 exports._t = { gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };

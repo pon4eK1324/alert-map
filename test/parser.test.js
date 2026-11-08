@@ -105,3 +105,51 @@ test('числові HTML-коди (&#33;) та &amp; розкодовуютьс
   const { decodeHtml } = require('../server')._t;
   assert.strictEqual(decodeHtml('Черкаси&#33; &#x41; &quot;так&quot; &amp;amp;'), 'Черкаси! A "так" &amp;');
 });
+
+// ---- Точність: місце і кількість ----
+test('область після місця через «/» чи «,» — уточнення, а не пункт призначення (→ЧЗВ/Житомирщина)', () => {
+  const near = (p, la, lo) => Math.abs(p[0] - la) < 0.05 && Math.abs(p[1] - lo) < 0.05;
+  const a = t.placesRaw('→ЧЗВ/Житомирщина');
+  assert.strictEqual(a.length, 1, 'центр Житомирщини не додається');
+  assert.ok(near(a[0], 51.33, 30.1) && !a[0][2]);
+  assert.strictEqual(t.placesRaw('Шахед: Бровари/Київщина').length, 1);
+  assert.strictEqual(t.placesRaw('БпЛА біля Суми, Київщина').length, 2, 'місце поза областю — окремий пункт');
+  assert.strictEqual(t.placesRaw('БпЛА на Київщину, Житомирщина').length, 2, 'дві області — дві точки');
+});
+
+test('двозначна назва («Ямпіль») тягнеться до місця, про яке цей канал писав щойно', async () => {
+  t.threats.clear(); delete t.lastPos.hint_a; delete t.lastPos.hint_b;
+  await feed('hint_b', [[1, 'БпЛА на Ямпіль']]);
+  assert.strictEqual(t.threats.size, 0, 'без підказки Ямпіль неоднозначний — не малюємо');
+  t.threats.clear();
+  await feed('hint_a', [[6, 'БпЛА біля Глухова'], [1, 'БпЛА на Ямпіль']]);
+  const all = [...t.threats.values()];
+  assert.strictEqual(all.length, 1);
+  const last = all[0].pts[all[0].pts.length - 1];
+  assert.ok(Math.abs(last[0] - 51.95) < 0.1 && Math.abs(last[1] - 33.79) < 0.1, 'Ямпіль на Сумщині, а не на Вінниччині');
+});
+
+test('countMinOf: «кілька/група» → «2+», точне число — окремо', () => {
+  assert.strictEqual(t.countMinOf('кілька шахедів на Київ'), true);
+  assert.strictEqual(t.countMinOf('Група БпЛА курсом на Суми'), true);
+  assert.strictEqual(t.countMinOf('🛸 Шахед на Київ'), false);
+  assert.strictEqual(t.countOf('кілька шахедів на Київ'), undefined);
+});
+
+test('кількість у групі: максимум серед каналів, а свій канал оновлює власне число', () => {
+  const { addThreat, threats, orphans } = t, now = Date.now();
+  const mk = (id, ch, dt, n, nMin) => ({ id, post: ch + '/' + id, type: 'shahed', t: now + dt, pts: [[50.45, 30.52]], text: 'x', ch, dest: false, n, nMin });
+  threats.clear(); orphans.clear();
+  addThreat(mk('a#0', 'cA', 0, 3)); addThreat(mk('b#0', 'cB', 30e3, 2));
+  assert.strictEqual(threats.size, 1); assert.strictEqual([...threats.values()][0].n, 3, 'два канали: береться максимум');
+  threats.clear();
+  addThreat(mk('a#1', 'cA', 0, 3)); addThreat(mk('a#2', 'cA', 60e3, 2));
+  assert.strictEqual([...threats.values()][0].n, 2, 'той самий канал уточнив число');
+  threats.clear();
+  addThreat(mk('a#3', 'cA', 0, 2, true)); addThreat(mk('b#3', 'cB', 20e3, 4));
+  const x = [...threats.values()][0]; assert.strictEqual(x.n, 4); assert.ok(!x.nMin, 'точне число скасовує «2+»');
+  threats.clear();
+  addThreat(mk('a#4', 'cA', 0, 2, true));
+  const y = [...threats.values()][0]; assert.strictEqual(y.n, 2); assert.strictEqual(y.nMin, true);
+  threats.clear();
+});

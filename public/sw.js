@@ -1,5 +1,5 @@
 // AlertMap: оболонка працює без інтернету; карти/скрипти з CDN кешуються під час перегляду
-const V = 'alertmap-v17', TILES = 'alertmap-tiles';
+const V = 'alertmap-v18', TILES = 'alertmap-tiles2';
 const SHELL = ['/', '/index.html', '/manifest.json', '/avatar.png', '/avatar-192.png', '/oblasts.json', '/raions.json', '/kyiv.json', '/settlements.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting()));
@@ -17,7 +17,7 @@ self.addEventListener('fetch', e => {
       .catch(() => caches.match(r, { ignoreSearch: true }).then(m => m || caches.match('/'))));
     return;
   }
-  if (/cdnjs\.cloudflare\.com|arcgisonline\.com|tiles\.maps\.eox\.at|basemaps\.cartocdn\.com/.test(u.host)) {
+  if (/cdnjs\.cloudflare\.com|arcgisonline\.com|tiles\.maps\.eox\.at/.test(u.host)) {
     e.respondWith(caches.match(r).then(m => m || fetch(r).then(res => {
       if (res.ok || res.type === 'opaque') { const cp = res.clone(); caches.open(TILES).then(c => c.put(r, cp).then(() => trim(c))); }
       return res;

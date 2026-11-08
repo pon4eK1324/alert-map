@@ -109,6 +109,28 @@ button.on{background:var(--accent);border-color:var(--accent);color:var(--on-acc
 #sr input{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--btn-b);background:var(--btn);color:var(--txt);font:inherit;box-sizing:border-box}
 #srl{display:flex;flex-direction:column;max-height:50vh;overflow-y:auto}
 .si{padding:7px 9px;border-radius:8px;cursor:pointer;font-size:13px}.si:hover,.si.sel{background:var(--btn)}.si small{color:var(--mut);display:block;font-size:11.5px}
+/* ---- вигляд: пласкі панелі, малий радіус, без скла й емодзі ---- */
+:root,[data-theme=light]{--shadow:0 0 0 1px rgba(0,0,0,.28)}
+html,body,button,select,input{font-family:Bahnschrift,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+.cnt{font-family:inherit}
+.box{border-radius:3px;backdrop-filter:none;box-shadow:none;background:var(--bg)}
+[data-theme=light] .box{background:var(--panel)}
+button,select,#pn input[type=text],#sr input{border-radius:3px;transition:none}
+.tool{border-radius:3px;box-shadow:none;background:var(--bg);font-weight:600}
+[data-theme=light] .tool{background:var(--panel)}
+button.on,#sat.on,#fdf button.on{background:var(--txt);border-color:var(--txt);color:var(--bg)}
+#pn .tg.on{background:var(--accent);border-color:var(--accent)}
+#pn .tg,#pn .tg::after{border-radius:3px}
+#pn .grp{text-transform:none;letter-spacing:0;color:var(--txt);font-size:12.5px;border-bottom:1px solid var(--b);padding-bottom:3px;margin:4px 0 0}
+.chip{border-radius:3px;box-shadow:none;padding:4px 10px;font-weight:600}
+#fdf button,#st{border-radius:3px}
+.fi,.si,.leaflet-tooltip{border-radius:3px}
+.leaflet-popup-content-wrapper{border-radius:3px}
+.cnt{border-radius:3px;box-shadow:none}
+.sw{border-radius:2px}
+#logo{border-radius:3px;background:var(--bg);box-shadow:none;border-width:1px}
+#ballb b.h{letter-spacing:0;font-size:13.5px}
+#acc i{border-radius:3px}
 </style>
 <script>
 // Web Audio API Sound Generator for Air Raid Siren & Cancellation
@@ -170,14 +192,14 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
 
 </head><body>
 <div id="map"></div>
-<div id="tools"><button id="srb" class="tool" title="Пошук населеного пункту">🔍</button><button id="fdb" class="tool" title="Стрічка повідомлень">📋 Стрічка</button><button id="sat" class="tool">🛰 Супутник</button><button id="cfg" class="tool" title="Вигляд">⚙ Вигляд</button></div>
+<div id="tools"><button id="srb" class="tool" title="Пошук населеного пункту">Пошук</button><button id="fdb" class="tool" title="Стрічка повідомлень">Стрічка</button><button id="sat" class="tool">Супутник</button><button id="cfg" class="tool" title="Вигляд">Вигляд</button></div>
 <div id="pn" class="box"></div>
 <div id="fd" class="box"><div id="fdf"></div><div id="fdl"></div></div>
 <div id="sr" class="box"><input id="sri" placeholder="Місто, селище чи село…" autocomplete="off"><div id="srl"></div></div>
 <div id="ballb" class="box"></div>
 <div id="stats"></div>
 <div id="at">Imagery © Esri, Maxar, Earthstar Geographics</div>
-<div id="lg" class="box"><button id="lgb">ⓘ Рівні тривоги</button>
+<div id="lg" class="box"><button id="lgb">Рівні тривоги</button>
  <div id="lgc">
   <div><i class="sw" style="background:var(--y1)"></i><span><b>Жовтий рівень</b> — дронова загроза (БпЛА, шахеди)</span></div>
   <div><i class="sw" style="background:var(--r1)"></i><span><b>Червоний рівень</b> — ракетна небезпека, у т.ч. балістика, масовані нальоти</span></div>
@@ -272,7 +294,7 @@ function stats(vis,items){ // лічильники зверху: скільки 
   $('stats').style.display=S.stats?'':'none';
   const c={shahed:0,jet:0,missile:0,ballistic:0,boom:0};for(const h of vis)c[h.type]+=h.n||1;
   const ob=new Set(items.map(i=>String(i.k).split('|')[0])).size;
-  $('stats').innerHTML=['shahed','jet','missile','ballistic','boom'].map(k=>`<div class="chip box${c[k]?'':' zero'}${k==='ballistic'&&c[k]?' hot':''}" title="${TNAME[k]}"><span class="ico ${k}" style="--isz:18px;width:18px;height:18px"><svg viewBox="0 0 24 24">${SVG[k]}</svg></span>${c[k]}</div>`).join('')+`<div class="chip box${ob?'':' zero'}" title="Областей (і м. Київ) під тривогою">🔔 ${ob}<small>обл.</small></div>`;
+  $('stats').innerHTML=['shahed','jet','missile','ballistic','boom'].map(k=>`<div class="chip box${c[k]?'':' zero'}${k==='ballistic'&&c[k]?' hot':''}" title="${TNAME[k]}"><span class="ico ${k}" style="--isz:18px;width:18px;height:18px"><svg viewBox="0 0 24 24">${SVG[k]}</svg></span>${c[k]}</div>`).join('')+`<div class="chip box${ob?'':' zero'}" title="Областей (і м. Київ) під тривогою">${ob}<small>обл.</small></div>`;
 }
 let BALL=[],BTTL=15*60e3,ballDis=0,ballSeen=null,SRC_ERR=false,actx=null;
 function beep(){try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();[0,.22,.44].forEach(d=>{const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.setValueAtTime(.0001,actx.currentTime+d);g.gain.exponentialRampToValueAtTime(.25,actx.currentTime+d+.02);g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+d+.18);o.connect(g).connect(actx.destination);o.start(actx.currentTime+d);o.stop(actx.currentTime+d+.2)})}catch(_){}}
@@ -281,7 +303,7 @@ function renderBall(RT){
   if(mode==='live'){const ids=new Set(v.map(w=>w.key));if(ballSeen){if(S.ballSound&&[...ids].some(i=>!ballSeen.has(i)))beep()}ballSeen=ids}
   if(!S.ballBanner||!v.length||v[0].t<=ballDis){el.classList.remove('show');return}
   const hm=t=>pad(new Date(t).getHours())+':'+pad(new Date(t).getMinutes());
-  el.innerHTML=`<button class="x" title="Сховати до нового повідомлення">×</button><b class="h">⚠ БАЛІСТИЧНА ЗАГРОЗА</b> <span style="color:var(--mut)">· повідомлень: ${v.length} · каналів: ${chSet(v.map(w=>w.ch)).length}</span>`+v.slice(0,3).map(w=>`<div class="ln"><a href="https://t.me/${esc(w.post)}" target="_blank" rel="noopener"><b>@${esc(w.ch)}</b> · ${hm(w.t)}</a><br>${esc(w.text)}</div>`).join('');
+  el.innerHTML=`<button class="x" title="Сховати до нового повідомлення">×</button><b class="h">Балістична загроза</b> <span style="color:var(--mut)">· повідомлень: ${v.length} · каналів: ${chSet(v.map(w=>w.ch)).length}</span>`+v.slice(0,3).map(w=>`<div class="ln"><a href="https://t.me/${esc(w.post)}" target="_blank" rel="noopener"><b>@${esc(w.ch)}</b> · ${hm(w.t)}</a><br>${esc(w.text)}</div>`).join('');
   el.classList.add('show');el.querySelector('.x').onclick=()=>{ballDis=v[0].t;el.classList.remove('show')};
 }
 

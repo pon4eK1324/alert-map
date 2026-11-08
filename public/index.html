@@ -222,7 +222,7 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const $=id=>document.getElementById(id), KYIV='м. Київ';
-let WIN=10*60e3; // скільки хвилин ціль лишається на мапі після останнього повідомлення (значення приходить із сервера)
+let NOC=0,WIN=10*60e3; // скільки хвилин ціль лишається на мапі після останнього повідомлення (значення приходить із сервера)
 let BASE_DARK={fillColor:'#2b303b',fillOpacity:1,color:'#1b1f27',weight:.8};
 const BASE_SAT={fillColor:'#000',fillOpacity:0,color:'#fff',opacity:.4,weight:.7};
 let BASE=BASE_DARK,sat=false;
@@ -294,7 +294,7 @@ function stats(vis,items){ // лічильники зверху: скільки 
   $('stats').style.display=S.stats?'':'none';
   const c={shahed:0,jet:0,missile:0,ballistic:0,boom:0};for(const h of vis)c[h.type]+=h.n||1;
   const ob=new Set(items.map(i=>String(i.k).split('|')[0])).size;
-  $('stats').innerHTML=['shahed','jet','missile','ballistic','boom'].map(k=>`<div class="chip box${c[k]?'':' zero'}${k==='ballistic'&&c[k]?' hot':''}" title="${TNAME[k]}"><span class="ico ${k}" style="--isz:18px;width:18px;height:18px"><svg viewBox="0 0 24 24">${SVG[k]}</svg></span>${c[k]}</div>`).join('')+`<div class="chip box${ob?'':' zero'}" title="Областей (і м. Київ) під тривогою">${ob}<small>обл.</small></div>`;
+  $('stats').innerHTML=['shahed','jet','missile','ballistic','boom'].map(k=>`<div class="chip box${c[k]?'':' zero'}${k==='ballistic'&&c[k]?' hot':''}" title="${TNAME[k]}"><span class="ico ${k}" style="--isz:18px;width:18px;height:18px"><svg viewBox="0 0 24 24">${SVG[k]}</svg></span>${c[k]}</div>`).join('')+`<div class="chip box${ob?'':' zero'}" title="Областей (і м. Київ) під тривогою">${ob}<small>обл.</small></div>`+(mode==='live'&&NOC>0?`<div class="chip box" title="Цілі, про які пишуть лише «курсом на …» без поточного місця">ще ${NOC}<small>без курсу</small></div>`:'');
 }
 let BALL=[],BTTL=15*60e3,ballDis=0,ballSeen=null,SRC_ERR=false,actx=null;
 function beep(){try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();[0,.22,.44].forEach(d=>{const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.setValueAtTime(.0001,actx.currentTime+d);g.gain.exponentialRampToValueAtTime(.25,actx.currentTime+d+.02);g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+d+.18);o.connect(g).connect(actx.destination);o.start(actx.currentTime+d);o.stop(actx.currentTime+d+.2)})}catch(_){}}
@@ -379,7 +379,7 @@ async function live(){
   if(mode!=='live')return;
   try{const s=await (await fetch('/api/state')).json();
     try{localStorage.setItem('am_last',JSON.stringify({at:Date.now(),s:{alerts:s.alerts,threats:s.threats,ball:s.ball,ballTtl:s.ballTtl,ref:s.ref,now:s.now,lastGood:s.lastGood,ttl:s.ttl}}))}catch(_){}
-    liveAlerts=s.alerts;threats=s.threats;BALL=s.ball||[];if(s.ballTtl)BTTL=s.ballTtl;SRC_ERR=String(s.source||'').startsWith('помилка');T=s.now;REF=s.ref||s.now;refAt=performance.now();STALE=!!s.stale;LG=s.lastGood||0;if(s.ttl)WIN=s.ttl;
+    liveAlerts=s.alerts;threats=s.threats;BALL=s.ball||[];if(s.ballTtl)BTTL=s.ballTtl;SRC_ERR=String(s.source||'').startsWith('помилка');T=s.now;REF=s.ref||s.now;refAt=performance.now();STALE=!!s.stale;LG=s.lastGood||0;if(s.ttl)WIN=s.ttl;NOC=s.noCourse||0;
     const ch=Object.entries((s.diag||{}).channels||{}),okc=ch.filter(([,v])=>v.ok).length;
     diagTxt='Тривоги: '+s.source+' · канали '+okc+'/'+ch.length+(ch.length?' ('+ch.map(([k,v])=>(v.ok?'✓ ':v.tried?'✗ ':'… ')+k+(v.ok||!v.err?'':' — '+v.err)).join(', ')+')':'')+((s.diag||{}).geo?' · '+s.diag.geo:'');
     $('src').textContent=s.source.startsWith('помилка')||showDiag?diagTxt:'';

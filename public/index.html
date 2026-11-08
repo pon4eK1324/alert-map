@@ -209,7 +209,7 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
   <div><i class="sw" style="background:var(--a1)"></i><span><b>Коричневий</b> — артобстріл / вуличні бої</span></div>
   <div><i class="sw" style="background:var(--r1);opacity:.6"></i><span><b>Напівпрозорий</b> — тривога лише в громаді чи місті, підсвічено весь район</span></div>
   <div id="lgi"></div>
-  <small>Рівні й зони беруться з офіційних даних тривог. Іконки цілей — за повідомленнями каналів, місця приблизні; ціль без тривоги під нею не показується. Число біля значка (2×) — скільки цілей летить разом. Фіолетовий банер угорі — повідомлення про балістику.</small>
+  <small>Рівні й зони беруться з офіційних даних тривог. Іконки цілей — за повідомленнями каналів, місця приблизні; ціль без тривоги під нею не показується. Число біля значка (2×) — скільки цілей летить разом; «2+×» — повідомили «кілька», точне число невідоме. Фіолетовий банер угорі — повідомлення про балістику.</small>
  </div></div>
 <div id="wm"><div id="logo" title="Натисніть, щоб побачити стан джерел"><img src="avatar.png" alt="AlertMap" onerror="this.parentNode.textContent='🇺🇦'"></div><div><b>AlertMap</b><small id="tl"></small><div id="st" title="Натисніть, щоб побачити стан каналів">● Підключення…</div><div id="src"></div></div></div>
 <div id="bar" class="box">
@@ -275,7 +275,7 @@ const TNAME={shahed:'Шахед (гвинтовий)',jet:'Реактивний 
 const zk=()=>Math.max(.8,Math.min(1.4,.8+.045*(map.getZoom()-5))); // чим ближче мапа — тим трохи більший значок (без фанатизму)
 const isz=()=>Math.round(S.isz*zk());
 const credN=h=>new Set((h.src&&h.src.length?h.src:[{ch:h.ch}]).map(s=>s.ch||'?')).size;
-const icon=(h,b,fresh,cn)=>{const z=isz(),pl=(S.pulse||h.type==='boom')&&fresh;return L.divIcon({className:'',iconSize:[z,z],html:`<div class="ico ${h.type}${S.iconBg?' bg':''}${pl?' pulse':''}${h.reg?' reg':''}${S.cred&&cn>1?' cr'+Math.min(5,cn):''}"><svg viewBox="0 0 24 24" style="transform:rotate(${b}deg)">${SVG[h.type]}</svg>${S.badge&&h.n>1?`<b class="cnt">${h.n}×</b>`:''}</div>`})};
+const icon=(h,b,fresh,cn)=>{const z=isz(),pl=(S.pulse||h.type==='boom')&&fresh;return L.divIcon({className:'',iconSize:[z,z],html:`<div class="ico ${h.type}${S.iconBg?' bg':''}${pl?' pulse':''}${h.reg?' reg':''}${S.cred&&cn>1?' cr'+Math.min(5,cn):''}"><svg viewBox="0 0 24 24" style="transform:rotate(${b}deg)">${SVG[h.type]}</svg>${S.badge&&h.n>1?`<b class="cnt">${h.n}${h.nMin?'+':''}×</b>`:''}</div>`})};
 $('lgi').innerHTML=[['shahed','шахед'],['jet','реактивний'],['boom','вибухи'],['missile','ракета'],['ballistic','балістика']].map(([k,t])=>`<span class="ico ${k}" style="--isz:22px;flex:0 0 22px"><svg viewBox="0 0 24 24">${SVG[k]}</svg></span><span style="margin-right:10px">${t}</span>`).join('');
 $('lgi').style.alignItems='center';$('lgi').style.flexWrap='wrap';
 
@@ -284,7 +284,7 @@ const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'
 function popup(h){
   const src=(h.src&&h.src.length?h.src:[{ch:h.ch,id:(h.id||'').split('#')[0],t:h.t,text:h.text}]).slice().sort((x,y)=>y.t-x.t);
   const rows=src.slice(0,8).map(s=>`<div style="margin:6px 0 0;padding-top:5px;border-top:1px solid var(--b)"><a href="https://t.me/${esc(s.id)}" target="_blank" rel="noopener"><b>@${esc(s.ch||'')}</b> · ${pad(new Date(s.t).getHours())}:${pad(new Date(s.t).getMinutes())}</a><br><span style="font-size:12px">${esc(s.text).slice(0,160)}</span></div>`).join('');
-  return `<b>${TNAME[h.type]||'Ціль'}${h.n>1?' · '+h.n+'×':''}</b> <span style="color:var(--mut)">· повідомлень: ${src.length}</span><div style="font-size:11.5px;color:var(--mut);margin-top:2px">Достовірність: ${'●'.repeat(Math.min(5,credN(h)))}${'○'.repeat(5-Math.min(5,credN(h)))} · незалежних каналів: ${credN(h)}</div>${rows}${src.length>8?'<div style="font-size:11px;margin-top:4px">… і ще '+(src.length-8)+'</div>':''}<div style="font-size:11px;color:var(--mut);margin-top:6px">${h.reg?'Точне місце невідоме — десь у межах області':'Місце приблизне, за текстом повідомлень'}</div>`;
+  return `<b>${TNAME[h.type]||'Ціль'}${h.n>1?' · '+h.n+(h.nMin?'+':'')+'×':''}</b> <span style="color:var(--mut)">· повідомлень: ${src.length}</span><div style="font-size:11.5px;color:var(--mut);margin-top:2px">Достовірність: ${'●'.repeat(Math.min(5,credN(h)))}${'○'.repeat(5-Math.min(5,credN(h)))} · незалежних каналів: ${credN(h)}</div>${rows}${src.length>8?'<div style="font-size:11px;margin-top:4px">… і ще '+(src.length-8)+'</div>':''}<div style="font-size:11px;color:var(--mut);margin-top:6px">${h.reg?'Точне місце невідоме — десь у межах області':'Місце приблизне, за текстом повідомлень'}</div>`;
 }
 /* Чи стоїть ціль у зоні тривоги: точка у полігоні району (або не далі tol км від його межі) */
 function inRing(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
@@ -330,7 +330,7 @@ const lifeOf=h=>h.type==='boom'?Math.min(S.life*60e3,15*60e3):S.life*60e3;
 const fadeOf=h=>{const left=lifeOf(h)-(nowT()-h.t);return left>=FADE_MS?1:Math.max(.1,left/FADE_MS)}; // 100% яскравості, згасання лише в останні 3 хв
 function projOff(h){const p=projPos(h);if(!h._N)return p;const z=map.getZoom(),o2=h._i>=6,n=o2?h._N-6:Math.min(h._N,6),i=o2?h._i-6:h._i,rad=isz()*.62*(o2?1.95:1),a=i/n*2*Math.PI+(o2?.5:0),c=map.project(p,z),q=map.unproject(L.point(c.x+Math.cos(a)*rad,c.y+Math.sin(a)*rad),z);return[q.lat,q.lng]}
 function syncMarker(h,b,fade,fresh,cn){
-  const sig=[h.type,Math.round(b),isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n:0,S.cred?Math.min(5,cn):0].join('|');
+  const sig=[h.type,Math.round(b),isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n+(h.nMin?'+':''):0,S.cred?Math.min(5,cn):0].join('|');
   let e=MK.get(h.id);
   if(!e){const p=projOff(h);e=MK.set(h.id,{m:L.marker(p,{icon:icon(h,b,fresh,cn),opacity:fade}).bindPopup(popup(h),{maxWidth:340}).addTo(mk),cur:p,sig,h}).get(h.id)}
   else{e.h=h;e.m.setOpacity(fade);if(e.sig!==sig){e.m.setIcon(icon(h,b,fresh,cn));e.sig=sig}e.m.setPopupContent(popup(h))}
@@ -373,7 +373,7 @@ function render(){
     const cn=credN(h),cf=1;h._b=1;const fade=Math.max(.02,h._b*fadeOf(h)),b=h.pts.length>1?bearing(a,z):0;
     if(h.pts.length>1&&(S.trails==='all'||(S.trails==='fast'&&h.type!=='shahed')))L.polyline(h.pts,{color:TRACK,weight:1.5,dashArray:'5 6',opacity:.55*fade,interactive:false}).addTo(tg);
     if(h.reg&&S.regZone)L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
-    const fr=mode==='live'&&!STALE&&RT-h.t<60e3,N=h.type==='boom'?1:Math.min(h.n||1,10);
+    const fr=mode==='live'&&!STALE&&RT-h.t<60e3,N=h.type==='boom'||h.nMin?1:Math.min(h.n||1,10); // «2+» (кілька, число невідоме) — один значок із підписом
     if(N<2)syncMarker(h,b,fade,fr,cn);
     else for(let i=0;i<N;i++){const m={...h,id:h.id+'~'+i,n:i===0&&h.n>N?h.n:0,_i:i,_N:N};seen.add(m.id);syncMarker(m,b,fade,fr,cn)} // «N×» → N окремих іконок (не більше 10; решта — числом біля першої)
   }

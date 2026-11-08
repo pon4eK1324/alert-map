@@ -68,7 +68,7 @@ function addGeo(o, geom) {
     a /= 2; if (!a) continue; const w = Math.abs(a); g.a += w; g.x += cx / (6 * a) * w; g.y += cy / (6 * a) * w;
   }
 }
-const regionGeo = stem => { for (const [k, g] of OBL_GEO) if (k.startsWith(stem) && g.a) return { la: g.y / g.a, lo: g.x / g.a, h: g.la1 - g.la0, w: g.lo1 - g.lo0 }; };
+const regionGeo = stem => { for (const [k, g] of OBL_GEO) if (k.startsWith(stem) && g.a) return { la: g.y / g.a, lo: g.x / g.a, h: g.la1 - g.la0, w: g.lo1 - g.lo0, b: [g.la0, g.la1, g.lo0, g.lo1] }; };
 function dirShift(line, m, g) {
   const rest = line.slice(m.index + m[0].length), D = "(півн|півд|схід|захід)[а-яіїєґ'’-]*";
   const before = new RegExp(D + '\\s*(?:частин[а-яіїєґ]*\\s*)?$', 'i').exec(line.slice(Math.max(0, m.index - 24), m.index)),
@@ -104,6 +104,7 @@ const GAZ_STOP = new Set([
 
 const CUE = /(?:[:：—–]|(?<![а-яіїєґ])(?:бпла|шахед\S*|дрон\S*|ракет\S*|ціл[іьи]\S*)|(?<![а-яіїєґ'’])(?:на|до|повз|біля|через|над|від|курс\S*|напрямк\S*|район\S*|р-н\S*|в|у|з|із)|→|➡)\s*(?:\S{1,12}\s+)?$/i;
 function gazPlaces(line, covered, anchors, hint) {
+  const hints = !hint ? [] : Array.isArray(hint[0]) ? hint : [[hint[0], hint[1], 3]]; // [[la, lo, макс. відстань у °], …] за пріоритетом
   const out = [], W = /(?<![А-ЯІЇЄҐа-яіїєґ'’ʼ-])[А-ЯІЇЄҐ][а-яіїєґ'’ʼ]{2,}(?:[-\s][А-ЯІЇЄҐ][а-яіїєґ'’ʼ]{2,}){0,2}(?![а-яіїєґ'’ʼ])/g;
   let m, prevOk = false, anchor = anchors[anchors.length - 1];
   while ((m = W.exec(line))) {
@@ -126,20 +127,26 @@ function gazPlaces(line, covered, anchors, hint) {
     else {
       const cs = hit.slice().sort((a, b) => b.pop - a.pop);
       if (anchor) { const near = cs.map(c => [c, dist([c.la, c.lo], anchor)]).sort((a, b) => a[1] - b[1])[0]; if (near[1] < 1.6) pick = near[0]; }
-      if (!pick && hint) { const near = cs.map(c => [c, dist([c.la, c.lo], hint)]).sort((a, b) => a[1] - b[1])[0]; if (near[1] < 3) pick = near[0]; }
+      for (const h of hints) {
+        if (pick) break;
+        const near = cs.map(c => [c, dist([c.la, c.lo], h)]).sort((a, b) => a[1] - b[1])[0];
+        if (near[1] < (h[2] || 3)) pick = near[0];
+      }
       if (!pick && cs[0].pop >= 1.8 * (cs[1].pop || 0.01) && cs[0].pop >= 1) pick = cs[0];
     }
     if (pick) { out.push([idx, pick.la, pick.lo, false]); anchor = [pick.la, pick.lo]; prevOk = true; covered.push([idx, idx + used + 1]); } else prevOk = false;
   }
   return out;
 }
+// Чи лежить місце q = [la, lo] у межах області g або поруч із нею (запас ~0,5° ≈ 40 км: «ЧЗВ/Житомирщина» — зона на межі областей).
+const inBox = (q, g) => q[0] >= g.b[0] - 0.5 && q[0] <= g.b[1] + 0.5 && q[1] >= g.b[2] - 0.5 && q[1] <= g.b[3] + 0.5;
 function placesRaw(line, hint) {
   line = String(line).replace(/[ʼ`‘]/g, '’');
   const f = [], covered = [], regs = [];
   for (const [stem, re] of REGIONS) {
     const m = re.exec(line), g = m && regionGeo(stem); if (!g) continue;
     const [dl, dn] = dirShift(line, m, g);
-    f.push([m.index, g.la + dl, g.lo + dn, true]); regs.push([m.index, m.index + m[0].length]); covered.push([m.index, m.index + m[0].length + 2]);
+    f.push([m.index, g.la + dl, g.lo + dn, true, g]); regs.push([m.index, m.index + m[0].length]); covered.push([m.index, m.index + m[0].length + 2]);
   }
   for (const p of PLACES) {
     const m = p.re.exec(line);
@@ -151,11 +158,13 @@ function placesRaw(line, hint) {
   }
   if (GAZ.size) { const an = f.filter(x => !x[3]).sort((a, b) => a[0] - b[0]).map(x => [x[1], x[2]]); f.push(...gazPlaces(line, covered, an, hint)); }
   const out = [];
-  for (const [ix, la, lo, reg] of f.sort((a, b) => a[0] - b[0])) {
+  for (const [ix, la, lo, reg, g] of f.sort((a, b) => a[0] - b[0])) {
     const last = out[out.length - 1];
-    if (!last || Math.hypot(last[0] - la, last[1] - lo) > 0.12) out.push([+la.toFixed(4), +lo.toFixed(4), reg, ix]);
+    if (!last || Math.hypot(last[0] - la, last[1] - lo) > 0.12) out.push([+la.toFixed(4), +lo.toFixed(4), reg, ix, g]);
   }
-  return out;
+  // «ЧЗВ/Житомирщина», «Бровари, Київщина»: область після місця через «/» чи «,» лише уточнює його (якщо місце справді в тій області),
+  // а не є пунктом призначення — інакше значок їде в геометричний центр області.
+  return out.filter((p, i) => !(p[2] && p[4] && /[\/,]\s*$/.test(line.slice(Math.max(0, p[3] - 4), p[3])) && out.some((q, j) => j < i && !q[2] && inBox(q, p[4]))));
 }
 const places = line => placesRaw(line).map(p => [p[0], p[1]]);
 
@@ -188,6 +197,9 @@ function countOf(l) {
   return n >= 2 && n <= 99 ? n : undefined;
 }
 
+// «кілька шахедів», «група БпЛА»: число невідоме, але точно більше однієї цілі → показуємо «2+», а не 1
+const GROUPW = new RegExp("(?<![а-яіїєґ])(?:кілька|декілька|група|групи|групою|групу|зграя|зграї|зграю|рій)\\s+(?:[а-яіїєґ'’ʼ-]+\\s+){0,2}?(?:" + NOUN + ')', 'i');
+const countMinOf = l => GROUPW.test(l);
 const CLOSING = /збит[аіоу]?|збив\w*|знищен[аіоу]?|мінус\b|ліквідован[аіоу]?|посаджен[аіоу]?|приземлен[аіоу]?|усунут[аіоу]?|зник|відбій|відбито|покинув|покинули|вийшов за межі|вийшли за межі|ціль втрачен|локаційно\s+втрачено|впав|розбився|припинив\s+існування|немає\s+цілей|чисто/i;
 const dist = (a, b) => Math.hypot(a[0] - b[0], (a[1] - b[1]) * Math.cos(a[0] * Math.PI / 180));
 
@@ -279,14 +291,35 @@ const CH_HINT = { truexakyiv: KYV, kievinfo_kyiv: KYV, monitoring_kiev: KYV, ope
   kievrealnoy: KYV, kyiv_operativ: KYV, radar_kyiv: KYV, kievobl: KYV, kharkiv_radar: KHR, live_kharkov: KHR, dnipro_radar: [48.46, 35.05], zaporozhye_radar: [47.84, 35.14],
   odesa_radar: ODS, mykolaiv_radar: [46.97, 32.0], kherson_radar: [46.64, 32.62], vinnytsia_radar: [49.23, 28.47], khmelnitsky_radar: [49.42, 26.99], lviv_radar: [49.84, 24.03], poltava_radar: [49.59, 34.55], cherkasy_radar: [49.44, 32.06] };
 const lastK = {};
+// Остання відома позиція цілі в кожному каналі: двозначні назви («Ямпіль») спершу тягнемо до місця, про яке цей канал писав хвилини тому,
+// і лише потім — до статичної підказки каналу (на кшталт «Київ» для київських каналів).
+const lastPos = {};
+const hintsFor = (ch, t) => {
+  const h = [], lp = lastPos[ch];
+  if (lp && t >= lp.t && t - lp.t <= 15 * 60e3) h.push([lp.p[0], lp.p[1], 1.5]);
+  if (CH_HINT[ch]) h.push([CH_HINT[ch][0], CH_HINT[ch][1], 3]);
+  return h;
+};
 const BULLET = /^[\s▪️•🔹🔸🔻🔺➡️→▶️\-–—*·]+/u;
 const seen = new Set();
 const SPEED = { shahed: 0.03, jet: 0.06, missile: 0.12, ballistic: 0.4 }, REACH0 = 0.35;
 
 const orphans = new Map();
 function noCourse(ref = Date.now()) { let n = 0; for (const [k, v] of orphans) { if (ref - v.t > TTL) orphans.delete(k); else n += v.n; } return n; }
+const COUNT_WIN = 3 * 60e3;
+// Кількість у групі = максимум серед каналів: від кожного каналу береться його найсвіжіший допис із числом (останні 3 хв),
+// тож два канали про одну групу («3» і «2») не затирають один одного, а один канал, що уточнив число, оновлює своє.
+function recount(x) {
+  const all = (x.src || []).filter(a => a.n);
+  if (!all.length) return;
+  const tmax = Math.max(...(x.src || []).map(a => a.t)), byCh = new Map();
+  for (const a of all) if (a.t >= tmax - COUNT_WIN && (!byCh.has(a.ch) || a.t >= byCh.get(a.ch).t)) byCh.set(a.ch, a);
+  const v = [...byCh.values()], ex = v.filter(a => !a.m);
+  if (ex.length) { x.n = Math.max(...ex.map(a => a.n)); delete x.nMin; }
+  else if (v.length) { x.n = 2; x.nMin = true; }
+}
 function addThreat(o) {
-  const src = { ch: o.ch, id: o.post, key: o.id, t: o.t, text: o.text };
+  const src = { ch: o.ch, id: o.post, key: o.id, t: o.t, text: o.text, ...(o.n ? { n: o.n } : {}), ...(o.nMin ? { m: 1 } : {}) };
   const join = x => { x.src = x.src || []; if (!x.src.some(a => a.key === src.key)) x.src.push(src); };
   for (const x of threats.values()) {
     if (x.type !== o.type || x.dead || Math.abs(x.t - o.t) > TTL) continue;
@@ -295,8 +328,8 @@ function addThreat(o) {
     const rad = o.type === 'boom' ? 0.25 : Math.min(0.8, 0.15 + (SPEED[o.type] || SPEED.shahed) * dtm * 0.5);
     if (dist(x.pts[x.pts.length - 1], o.pts[o.pts.length - 1]) < rad) {
       join(x);
-      if (o.t >= x.t) { x.t = o.t; if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; } x.text = o.text; x.ch = o.ch; if (o.n) x.n = o.n; }
-      else if (o.n && !x.n) x.n = o.n;
+      if (o.t >= x.t) { x.t = o.t; if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; } x.text = o.text; x.ch = o.ch; }
+      recount(x);
       return;
     }
   }
@@ -309,14 +342,14 @@ function addThreat(o) {
     }
     if (best) {
       join(best);
-      if (o.t >= best.t) { best.t = o.t; best.text = o.text; best.ch = o.ch; if (o.n) best.n = o.n; if (bd > 0.25) best.pts = [best.pts[0], o.pts[0]]; }
-      else if (o.n && !best.n) best.n = o.n;
+      if (o.t >= best.t) { best.t = o.t; best.text = o.text; best.ch = o.ch; if (bd > 0.25) best.pts = [best.pts[0], o.pts[0]]; }
+      recount(best);
       return;
     }
     if (o.type !== 'boom') orphans.set(o.type + '@' + o.pts[0].map(v => v.toFixed(1)).join(','), { t: o.t, n: o.n || 1 }); // «курс на X» без відомого місця: не малюємо, лише рахуємо
     return;
   }
-  o.src = [src]; o.t0 = o.t; threats.set(o.id, o);
+  o.src = [src]; o.t0 = o.t; recount(o); threats.set(o.id, o);
 }
 function closeNear(o) {
   let best = null, bd = 0.6;
@@ -378,7 +411,7 @@ async function pollTG(ch) {
           if (!seen.has(key + 'c')) { seen.add(key + 'c'); for (const x of threats.values()) if (x.type === k && !x.dead && x.t <= tms && tms - x.t <= TTL && (x.src || []).some(a => a.ch === ch)) x.dead = tms; }
           return;
         }
-        const raw = placesRaw(line, CH_HINT[ch]);
+        const raw = placesRaw(line, hintsFor(ch, tms));
         if (raw.length >= 2) {
           const bef = p => line.slice(Math.max(0, p[3] - 22), p[3]);
           const isTo = p => /(?:^|[\s(])(?:на|до|→|➡️?|напрямку|напрямок|курс\S*\s+на)\s*$/i.test(bef(raw[0])) && p === raw[0];
@@ -396,7 +429,8 @@ async function pollTG(ch) {
           raw.forEach((p, i) => addThreat({ id: key + 'p' + i, post: id, type: 'boom', t: tms, pts: [[p[0], p[1]]], text: line.trim().slice(0, 300), ch, dest: false, reg: !!p[2] }));
           n++; return;
         }
-        const o = { id: key, post: id, type: k, t: tms, pts, text: line.trim().slice(0, 300), ch, dest: pts.length === 1 && (DEST.test(line) || (/(?:^|[\s,])(?:на|до)\s/i.test(line) && !/біля|над\s|район|околиц|поблизу|\sв\s|\sу\s/i.test(line))), n: countOf(line), reg: !!(raw[0] && raw[0][2]) };
+        const cnt = countOf(line), cmin = !cnt && countMinOf(line);
+        const o = { id: key, post: id, type: k, t: tms, pts, text: line.trim().slice(0, 300), ch, dest: pts.length === 1 && (DEST.test(line) || (/(?:^|[\s,])(?:на|до)\s/i.test(line) && !/біля|над\s|район|околиц|поблизу|\sв\s|\sу\s/i.test(line))), n: cnt || (cmin ? 2 : undefined), nMin: cmin || undefined, reg: !!(raw[0] && raw[0][2]) };
         
         if (CLOSING.test(line)) { 
           closeNear(o); 
@@ -406,6 +440,7 @@ async function pollTG(ch) {
         if (!lastK[ch] || tms >= lastK[ch].t) lastK[ch] = { k, t: tms };
         if (!lastK['*'] || tms >= lastK['*'].t) lastK['*'] = { k, t: tms };
         
+        if (!o.dead && !o.reg && o.pts.length) { const lp = lastPos[ch]; if (!lp || tms >= lp.t) lastPos[ch] = { t: tms, p: o.pts[o.pts.length - 1] }; }
         addThreat(o); 
         n++;
       });
@@ -559,5 +594,5 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
-exports._t = { decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
+exports._t = { countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
 if (require.main === module) exports.start();

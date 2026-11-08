@@ -8,7 +8,7 @@
 <meta name="google-site-verification" content="J_pkVY15dwY4gYqYHQC6ummAFAZ2f3V4BCsXTcvyixM" />
 <meta property="og:site_name" content="AlertMap">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebSite","name":"AlertMap","alternateName":"Мапа тривог України","url":"https://alert-map-ect7.onrender.com/"}
+{"@context":"https://schema.org","@type":"WebSite","name":"AlertMap","alternateName":["Мапа тривог України","alert-map-ect7.onrender.com"],"url":"https://alert-map-ect7.onrender.com/"}
 </script>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
@@ -135,6 +135,7 @@ button.on,#sat.on,#fdf button.on{background:var(--txt);border-color:var(--txt);c
 #ballb b.h{letter-spacing:0;font-size:13.5px}
 #acc i{border-radius:3px}
 
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 /* ================= Мобільна адаптація ================= */
 html,body{height:100%;height:100dvh;overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%;text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
 button,select,input,.fi,.si,#lgb,#logo,#st{touch-action:manipulation}
@@ -264,6 +265,7 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
 </script>
 
 </head><body>
+<h1 class="sr-only">AlertMap — мапа тривог України в реальному часі</h1>
 <div id="map"></div>
 <div id="tools"><button id="srb" class="tool" title="Пошук населеного пункту">Пошук</button><button id="fdb" class="tool" title="Стрічка повідомлень">Стрічка</button><button id="sat" class="tool">Супутник</button><button id="cfg" class="tool" title="Вигляд">Вигляд</button></div>
 <div id="pn" class="box"></div>

@@ -35,6 +35,7 @@ body.satmode #map,body.satmode .leaflet-container{background:#0b0d11}
 .leaflet-popup-content a{color:var(--accent)}.leaflet-container a.leaflet-popup-close-button{color:var(--mut)}
 .leaflet-tooltip{background:var(--panel);color:var(--txt);border:1px solid var(--b);border-radius:8px;box-shadow:var(--shadow)}
 .leaflet-tooltip-top:before,.leaflet-tooltip-bottom:before,.leaflet-tooltip-left:before,.leaflet-tooltip-right:before{display:none}
+#at2{display:none;position:absolute;z-index:900;left:50%;transform:translateX(-50%);bottom:2px;font-size:10px;color:var(--mut);pointer-events:none}.streets #at2{display:block}
 #at{display:none;position:absolute;z-index:900;right:4px;bottom:2px;font-size:10px;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;pointer-events:none;opacity:.8}
 .satmode #at{display:block}
 .far .lbl{display:none}
@@ -198,6 +199,7 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
 <div id="sr" class="box"><input id="sri" placeholder="Місто, селище чи село…" autocomplete="off"><div id="srl"></div></div>
 <div id="ballb" class="box"></div>
 <div id="stats"></div>
+<div id="at2">© OpenStreetMap contributors © CARTO</div>
 <div id="at">Imagery © Esri, Maxar, Earthstar Geographics</div>
 <div id="lg" class="box"><button id="lgb">Рівні тривоги</button>
  <div id="lgc">
@@ -248,7 +250,7 @@ function styleFor(k,o,items){
     const sc=(i.p?{red:3,art:2,yellow:1}:{red:30,art:20,yellow:10})[lv]+scope;
     if(!best||sc>best.sc)best={sc,c:COL[lv][scope?0:1],op:i.p?.7:1};
   }
-  return best?{...BASE,fillColor:best.c,fillOpacity:best.op*(sat?.5:1)*S.zop/100}:BASE;
+  return best?{...BASE,fillColor:best.c,fillOpacity:best.op*((sat||STR)?.5:1)*S.zop/100}:BASE;
 }
 
 /* ---------- Налаштування (зберігаються в браузері одним об'єктом) ---------- */
@@ -452,16 +454,33 @@ function updCities(){
 }
 map.on('zoomend moveend',updCities);
 function setSat(on){
-  sat=on;BASE=on?BASE_SAT:BASE_DARK;
+  sat=on;BASE=on?BASE_SAT:curBase();
   on?imagery.addTo(map):imagery.remove();
   document.body.classList.toggle('satmode',on);$('sat').classList.toggle('on',on);
   obl&&obl.setStyle(on?OBL_SAT:OBL_DARK);
-  render();farCls();updCities();
+  updStreets(true);render();farCls();updCities();
   try{localStorage.setItem('sat',on?'1':'0')}catch(_){}
 }
 const farCls=()=>document.body.classList.toggle('far',map.getZoom()>=8);
 map.on('zoomend',farCls);
 $('sat').onclick=()=>setSat(!sat);
+/* вулиці/річки/ліси під зонами при наближенні (zoom >= 8): підкладка CARTO без підписів, підписи малюємо самі */
+var STREETS,STR=false;
+const stUrl=()=>'https://{s}.basemaps.cartocdn.com/'+(effTheme()==='light'?'light_nolabels':'dark_nolabels')+'/{z}/{x}/{y}{r}.png';
+function curBase(){return sat?BASE_SAT:STR?{...BASE_DARK,fillOpacity:.12}:BASE_DARK}
+function updStreets(quiet){
+  try{
+    const want=!sat&&map.getZoom()>=8,u=stUrl();
+    if(!STREETS)STREETS=L.tileLayer(u,{subdomains:'abcd',maxNativeZoom:19,maxZoom:19});
+    else if(STREETS._u!==u)STREETS.setUrl(u);
+    STREETS._u=u;const was=STR;STR=want;
+    want?STREETS.addTo(map):STREETS.remove();
+    document.body.classList.toggle('streets',want);
+    BASE=curBase();
+    if(!quiet&&was!==STR&&typeof render==='function')render();
+  }catch(e){}
+}
+map.on('zoomend',()=>updStreets());updStreets(true);
 
 const lab=(ll,t,c='lbl')=>L.marker(ll,{interactive:false,icon:L.divIcon({className:'',iconSize:[0,0],html:`<div class="${c}">${t}</div>`})}).addTo(map);
 const fs=()=>document.documentElement.style.setProperty('--fs',Math.max(9,Math.min(16,map.getZoom()*2-1))*S.fscale/100+'px');
@@ -497,7 +516,7 @@ function applyTheme(){
   COL={yellow:z(S.cYellow,'--y1','--y2'),red:z(S.cRed,'--r1','--r2'),art:z(S.cArt,'--a1','--a2')};
   BASE_DARK={fillColor:cssv('--poly'),fillOpacity:1,color:cssv('--polyb'),weight:S.raionB?.8:0};
   OBL_DARK={fill:false,color:cssv('--oblb'),weight:effTheme()==='light'?1.7:2,opacity:1};TRACK=cssv('--track')||'#fff';
-  BASE=sat?BASE_SAT:BASE_DARK;obl&&obl.setStyle(sat?OBL_SAT:OBL_DARK);
+  BASE=sat?BASE_SAT:(typeof curBase==='function'?curBase():BASE_DARK);typeof updStreets==='function'&&updStreets(true);obl&&obl.setStyle(sat?OBL_SAT:OBL_DARK);
   document.body.classList.toggle('no-obl',!S.oblLbl);$('lg').style.display=S.legend?'':'none';
   const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.setAttribute('content',cssv('--bg'));
   fs();syncPanel();updCities();render();

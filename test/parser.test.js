@@ -85,3 +85,18 @@ test('«Момент падіння та детонації…», «відео �
   await feed('reg_i', [[1, 'Вибухи у Харкові']]);
   assert.strictEqual(t.threats.size, 1, 'живе повідомлення про вибухи лишається');
 });
+
+test('«курсом на X» без відомого місця не малюється, а рахується як «без курсу»', () => {
+  const { addThreat, threats, orphans, noCourse } = require('../server')._t;
+  threats.clear(); orphans.clear();
+  addThreat({ id: 't#0', post: 'c/1', type: 'shahed', t: Date.now(), pts: [[49.59, 34.55]], text: 'БпЛА курсом на Полтаву', ch: 'c', dest: true, n: 3 });
+  assert.strictEqual(threats.size, 0);
+  assert.strictEqual(noCourse(), 3);
+  orphans.clear();
+});
+
+test('перелік сіл після двокрапки розпізнається, область у дужках не стає пунктом призначення', () => {
+  const { placesRaw, loadGeo, loadGaz } = require('../server')._t;
+  loadGeo(); loadGaz();
+  assert.ok(placesRaw('БпЛА: Решетилівка, Козельщина').length >= 1);
+});

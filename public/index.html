@@ -58,7 +58,7 @@ button.on{background:var(--accent);border-color:var(--accent);color:var(--on-acc
 .ico svg path{fill:var(--tc);stroke:var(--is);stroke-width:1.4;stroke-linejoin:round}
 .ico.ballistic svg{filter:drop-shadow(0 0 5px var(--tc)) drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 .ico.bg{border-radius:50%;background:var(--tgtbg);border:2px solid var(--tc);box-shadow:0 2px 8px #0007}.ico.bg svg{width:68%;height:68%}
-.ico.reg{opacity:.78}
+.ico.reg{opacity:1}
 .ico.pulse::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--tc);animation:pl 1.8s ease-out infinite;pointer-events:none}
 @keyframes pl{from{transform:scale(.75);opacity:.9}to{transform:scale(1.4);opacity:0}}
 .cnt{position:absolute;right:-9px;top:-9px;min-width:22px;height:20px;padding:0 5px;border-radius:10px;background:var(--accent);color:var(--on-accent);font:700 12px/17px system-ui,sans-serif;text-align:center;border:2px solid var(--tgtbg);box-shadow:0 1px 4px #0008}
@@ -301,7 +301,7 @@ function projPos(h){
 /* Згасання: ціль яскрава до останньої хвилини життя, потім плавно стає повністю прозорою */
 const FADE_MS=3*60e3;
 const lifeOf=h=>h.type==='boom'?Math.min(S.life*60e3,15*60e3):S.life*60e3;
-const fadeOf=h=>{const left=lifeOf(h)-(nowT()-h.t);return left>=FADE_MS?1:Math.max(.1,left/FADE_MS)};
+const fadeOf=h=>{const left=lifeOf(h)-(nowT()-h.t);return left>=FADE_MS?1:Math.max(.1,left/FADE_MS)}; // 100% яскравості, згасання лише в останні 3 хв
 function syncMarker(h,b,fade,fresh,cn){
   const sig=[h.type,Math.round(b),isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n:0,S.cred?Math.min(5,cn):0].join('|');
   let e=MK.get(h.id);
@@ -343,7 +343,7 @@ function render(){
     const a=h.pts[0],z=h.pts[h.pts.length-1];
     if(zs&&h.type!=='boom'&&!nearZone(a[0],a[1],zs,h.reg?45:10))continue;
     vis.push(h);seen.add(h.id);
-    const cn=credN(h),cf=S.cred?[.62,.8,.92,1][Math.min(cn,4)-1]:1;h._b=cf*(mode==='live'&&STALE?.7:1);const fade=Math.max(.02,h._b*fadeOf(h)),b=h.pts.length>1?bearing(a,z):0;
+    const cn=credN(h),cf=1;h._b=1;const fade=Math.max(.02,h._b*fadeOf(h)),b=h.pts.length>1?bearing(a,z):0;
     if(h.pts.length>1&&(S.trails==='all'||(S.trails==='fast'&&h.type!=='shahed')))L.polyline(h.pts,{color:TRACK,weight:1.5,dashArray:'5 6',opacity:.55*fade,interactive:false}).addTo(tg);
     if(h.reg&&S.regZone)L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
     syncMarker(h,b,fade,mode==='live'&&!STALE&&RT-h.t<60e3,cn);
@@ -444,7 +444,7 @@ map.on('zoomend',fs);fs();
 const ACCS=['#4f8fe0','#2ec4b6','#a78bfa','#ff9f43','#ff6b9d','#9be564'];
 const UI=[['Тема',[['theme','seg',[['auto','Авто'],['light','☀ Світла'],['dark','☾ Темна']]],['accent','acc']]],
  ['Значки',[['isz','range','Розмір',20,64],['iconBg','tog','Круглий фон значка'],['pulse','tog','Пульсація нових'],['badge','tog','Лічильник групи (2×)'],['trails','seg',[['off','Без ліній'],['fast','Ракети'],['all','Усі']],'Лінії курсу'],['regZone','tog','Зона, якщо відома лише область']]],
- ['Цілі',[['tShahed','tog','Шахеди (гвинтові)'],['tJet','tog','Реактивні шахеди'],['tBoom','tog','Вибухи'],['cred','tog','Яскравість за достовірністю (кількість каналів)'],['ballMin','seg',[[1,'1'],[2,'2'],[3,'3']],'Балістика: мін. каналів для банера і значка'],['tMissile','tog','Ракети'],['tBallistic','tog','Балістика'],['onlyAlert','tog','Лише там, де є тривога'],['life','seg',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[30,'30 хв']],'Скільки лишається на мапі'],['cShahed','col','Колір шахеда'],['cJet','col','Колір реактивного'],['cBoom','col','Колір вибухів'],['cMissile','col','Колір ракети'],['cBallistic','col','Колір балістики']]],
+ ['Цілі',[['tShahed','tog','Шахеди (гвинтові)'],['tJet','tog','Реактивні шахеди'],['tBoom','tog','Вибухи'],['ballMin','seg',[[1,'1'],[2,'2'],[3,'3']],'Балістика: мін. каналів для банера і значка'],['tMissile','tog','Ракети'],['tBallistic','tog','Балістика'],['onlyAlert','tog','Лише там, де є тривога'],['life','seg',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[30,'30 хв']],'Скільки лишається на мапі'],['cShahed','col','Колір шахеда'],['cJet','col','Колір реактивного'],['cBoom','col','Колір вибухів'],['cMissile','col','Колір ракети'],['cBallistic','col','Колір балістики']]],
  ['Зони тривог',[['cYellow','col','Жовтий рівень'],['cRed','col','Червоний рівень'],['cArt','col','Артобстріл'],['zop','range','Насиченість, %',30,100],['raionB','tog','Межі районів']]],
  ['Підписи',[['cityLbl','tog','Міста й села'],['oblLbl','tog','Назви областей'],['fscale','range','Розмір шрифту, %',70,150],['stats','tog','Лічильники зверху'],['legend','tog','Легенда']]],
  ['Балістика',[['ballBanner','tog','Банер «балістична загроза»'],['ballSound','tog','Звуковий сигнал']]]];

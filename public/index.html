@@ -299,9 +299,9 @@ function projPos(h){
   return[a[0]+(z[0]-a[0])*f,a[1]+(z[1]-a[1])*f];
 }
 /* Згасання: ціль яскрава до останньої хвилини життя, потім плавно стає повністю прозорою */
-const FADE_MS=60e3;
+const FADE_MS=3*60e3;
 const lifeOf=h=>h.type==='boom'?Math.min(S.life*60e3,15*60e3):S.life*60e3;
-const fadeOf=h=>{const left=lifeOf(h)-(nowT()-h.t);return left>=FADE_MS?1:Math.max(0,left/FADE_MS)};
+const fadeOf=h=>{const left=lifeOf(h)-(nowT()-h.t);return left>=FADE_MS?1:Math.max(.1,left/FADE_MS)};
 function syncMarker(h,b,fade,fresh,cn){
   const sig=[h.type,Math.round(b),isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n:0,S.cred?Math.min(5,cn):0].join('|');
   let e=MK.get(h.id);

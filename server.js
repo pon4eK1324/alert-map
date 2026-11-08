@@ -2,6 +2,7 @@
 const http = require('http'), fs = require('fs'), path = require('path');
 const { PLACES } = require('./places');
 // Публічні Telegram-канали (t.me/s/...). Можна змінити у config.json: { "channels": ["kpszsu", "..."] } або змінною TG_CHANNELS.
+// При старті недійсні канали (немає публічного перегляду) автоматично вилучаються з опитування.
 const DEFAULT_CHANNELS = [
   // загальнонаціональні та офіційні
   'kpszsu', 'kudy_letyt', 'UkraineRadar_24_7', 'povitryanatrivogaaa', 'eRadarrua', 'rlsukr', 'raketa_trevoga', 'monikppy', 'deraketaua',
@@ -11,14 +12,19 @@ const DEFAULT_CHANNELS = [
   'kievinfo_kyiv', 'monitoring_kiev', 'operativniy_monitor', 'VA_Kyiv', 'synegubov', 'odessa_infonews', 'kyivoperativ', 'operativnoZSU', 'realkiev',
   // додано: загальноукраїнські монітори
   'vanek_nikolaev', 'monitor_ukr', 'mon1tor_ua', 'radar_ukr', 'lachenwrite', 'trivoga_rada', 'povitryanatrivoga_ua', 'raketa_shahed',
+  'air_alert_ua', 'war_monitor', 'lachentyt', 'uastartap',
   // Київ і північ
   'kyiv_info', 'real_kyiv', 'zhytomyr_info', 'chernihiv_operativ', 'sumy_monitor',
+  'kievrealnoy', 'kyiv_operativ', 'radar_kyiv', 'kievobl',
   // південь і Причорномор'я
   'odesa_info', 'odessa_good', 'mykolaiv_monitor', 'kherson_operativ', 'zaporozhye_info',
+  'odesa_radar', 'mykolaiv_radar', 'kherson_radar',
   // схід
   'kharkiv_live', 'trueha_kharkiv', 'dnipro_operativ', 'dnipro_info', 'poltava_monitor', 'kremenchuk_operativ',
+  'kharkiv_radar', 'live_kharkov', 'dnipro_radar', 'zaporozhye_radar', 'poltava_radar',
   // захід і центр
-  'kyiv_m0nitoring', 'vinnytsia_info', 'cherkasy_live', 'kropyvnytskyi_monitor', 'lviv_live', 'khmelnytskyi_operativ', 'rivne_operativ'];
+  'kyiv_m0nitoring', 'vinnytsia_info', 'cherkasy_live', 'kropyvnytskyi_monitor', 'lviv_live', 'khmelnytskyi_operativ', 'rivne_operativ',
+  'vinnytsia_radar', 'khmelnitsky_radar', 'lviv_radar', 'cherkasy_radar'];
 const cleanCh = c => String(c).trim().replace(/^.*t\.me\/(s\/)?/, '').replace(/^@/, '').replace(/[/?#].*$/, '');
 DEFAULT_CHANNELS.splice(0, DEFAULT_CHANNELS.length, ...DEFAULT_CHANNELS.filter((c, i, a) => a.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i));
 let CHANNELS = (process.env.TG_CHANNELS ? process.env.TG_CHANNELS.split(',') : DEFAULT_CHANNELS).map(cleanCh).filter(Boolean);
@@ -172,7 +178,7 @@ function kind(l) {
   if (/балістик|балістичн|аеробаліст|іскандер|кн-?2[345]|х-?47|кинджал|кінжал|фатех|фатх|точка-?у|оперативно-тактичн|(?:ракет\S*|пуск\S*|удар\S*)\s+(?:зрк\s+)?с-?[34]00|с-?[34]00\s+(?:на|по|курсом)/i.test(l)) return 'ballistic';
   if (/крилат|ракет|калібр|х-?101|х-?555|х-?22|х-?59|х-?69|циркон|онікс|буревісник|орєшнік|орешнік/i.test(l)) return 'missile';
   if (/реактивн\S*\s+(?:\S+\s+){0,2}?(?:шахед|бпла|дрон|безпілот|герань|геран|ударн)|геран[ьі]?[-\s]?3|(?<![a-z])jet[-\s]?(?:shahed|geran|drone)|шахед\S*[-\s]?3\d\d/i.test(l) && !/артилері|рсзв|град\b|смерч|ураган/i.test(l)) return 'jet';
-  if (/шахед|шахеді|бпла|дрон|безпілот|герань|гербер|мопед|молни[яі]|камікадзе|імітатор|shahed|geran/i.test(l)) return 'shahed';
+  if (/шахед|шахеді|бпла|бпл(?![а-яіїєґ])|дрон|безпілот|герань|геран|гербер|мопед|молни[яі]|камікадзе|імітатор|shahed|geran|\buav\b|\bdrones?\b/i.test(l)) return 'shahed';
 }
 
 const NIGHT = /(?:у|за|протягом)\s+ніч\S*|протягом ночі|вранці|зафіксовано влучання|місцях падіння|локаці[яй] влучан|(?<![а-яіїєґ])[ув]ночі|минул\S*\s+ноч|цієї\s+ночі|сьогодні\s+вночі|вчора|за\s+добу|упродовж\s+(?:ночі|доби)|завдал[аио]\s+(?:\S+\s+){0,2}?удар|завдав\s+(?:\S+\s+){0,2}?удар|завдан\S*\s+удар|(?:було|були)\s+(?:випущен|запущен|збит|знищен|завдан|пошкоджен)|випустил[аи]|запустил[аи]\s+по|наслідки|заявив|заявила|за\s+словами|[—–-]\s*зеленськ|зеленськ\S*\s+(?:заявив|повідомив)|дснс|(?:поранених|постраждалих|загиблих)\s+не\s+зафіксован\S*|спалахн\S*\s+(?:\S+\s+){0,2}?(?:автомобіл|авто|будинок|будівл|склад)|момент\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|(?:відео|кадри|фото|запис)\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|вирв(?:а|и|у|і|ою)(?![а-яіїєґ])|після\s+(?:прильот|влучанн)|звіт\s+за|підсумки\s+(?:доби|ночі)|ранкове\s+зведення|зведення\s+генштабу|подробиці\s+атаки|ліквідація\s+наслідків|пожежно-рятувальн|руйнування\s+взанаслідок|пошкоджено\s+приватні|уламки\s+(?:впали|ушкодили|пошкодили)|знайдено\s+боєголовку|роботи\s+з\s+знешкодження|результати\s+роботи\s+ппо|підтверджено\s+знищення|ураження\s+цілі|знищено\s+ворожу\s+техніку/i;
@@ -281,7 +287,9 @@ async function pollAlerts() {
 
 const KYV = [50.45, 30.52], ODS = [46.48, 30.72], KHR = [49.99, 36.23];
 const CH_HINT = { truexakyiv: KYV, kievinfo_kyiv: KYV, monitoring_kiev: KYV, operativniy_monitor: KYV, VA_Kyiv: KYV, kyivoperativ: KYV, realkiev: KYV, truexazhitomir: [50.25, 28.66], truexadnepr: [48.46, 35.05],
-  truexakharkiv: KHR, synegubov: KHR, truexapoltava: [49.59, 34.55], truexazaporozie: [47.84, 35.14], truexakhersonua: [46.64, 32.62], odesatruexa: ODS, odessa_infonews: ODS, lvivtruexa: [49.84, 24.03], chernigivtruexa: [51.5, 31.3] };
+  truexakharkiv: KHR, synegubov: KHR, truexapoltava: [49.59, 34.55], truexazaporozie: [47.84, 35.14], truexakhersonua: [46.64, 32.62], odesatruexa: ODS, odessa_infonews: ODS, lvivtruexa: [49.84, 24.03], chernigivtruexa: [51.5, 31.3],
+  kievrealnoy: KYV, kyiv_operativ: KYV, radar_kyiv: KYV, kievobl: KYV, kharkiv_radar: KHR, live_kharkov: KHR, dnipro_radar: [48.46, 35.05], zaporozhye_radar: [47.84, 35.14],
+  odesa_radar: ODS, mykolaiv_radar: [46.97, 32.0], kherson_radar: [46.64, 32.62], vinnytsia_radar: [49.23, 28.47], khmelnitsky_radar: [49.42, 26.99], lviv_radar: [49.84, 24.03], poltava_radar: [49.59, 34.55], cherkasy_radar: [49.44, 32.06] };
 const lastK = {};
 const BULLET = /^[\s▪️•🔹🔸🔻🔺➡️→▶️\-–—*·]+/u;
 const seen = new Set();
@@ -292,9 +300,12 @@ function addThreat(o) {
   const join = x => { x.src = x.src || []; if (!x.src.some(a => a.key === src.key)) x.src.push(src); };
   for (const x of threats.values()) {
     if (x.type !== o.type || x.dead || Math.abs(x.t - o.t) > TTL) continue;
-    if (dist(x.pts[x.pts.length - 1], o.pts[o.pts.length - 1]) < 0.25) {
+    // радіус злиття росте з часом між постами: ціль за кілька хвилин встигає відлетіти далі
+    const dtm = Math.abs(x.t - o.t) / 60e3;
+    const rad = o.type === 'boom' ? 0.25 : Math.min(1, 0.25 + (SPEED[o.type] || SPEED.shahed) * dtm * 0.7);
+    if (dist(x.pts[x.pts.length - 1], o.pts[o.pts.length - 1]) < rad) {
       join(x);
-      if (o.t >= x.t) { x.t = o.t; if (!o.dest) { x.pts = o.pts; x.reg = o.reg; } x.text = o.text; x.ch = o.ch; if (o.n) x.n = o.n; }
+      if (o.t >= x.t) { x.t = o.t; if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; } x.text = o.text; x.ch = o.ch; if (o.n) x.n = o.n; }
       else if (o.n && !x.n) x.n = o.n;
       return;
     }
@@ -314,7 +325,7 @@ function addThreat(o) {
     }
     return;
   }
-  o.src = [src]; threats.set(o.id, o);
+  o.src = [src]; o.t0 = o.t; threats.set(o.id, o);
 }
 function closeNear(o) {
   let best = null, bd = 0.6;
@@ -430,20 +441,25 @@ function save() {
   } catch (e) {}
 }
 
-// Розрахунок прозорості: ціль стає напівпрозорою ТІЛЬКИ в останні 3 хвилини перед зникненням (TTL - FADE_TIME)
+// Прозорість: ціль напівпрозора ТІЛЬКИ в останні 3 хвилини перед зникненням (TTL - FADE_TIME).
+// est: розрахункова поточна позиція цілі, якщо відомо і «звідки», і «куди» (рух від першої точки до останньої зі швидкістю типу цілі).
 const recent = (ms, ref = Date.now()) => [...threats.values()]
   .filter(t => !t.dead && t.t > ref - ms)
   .map(t => {
-    const age = ref - t.t;
-    const timeLeft = TTL - age;
+    const age = ref - t.t, timeLeft = TTL - age;
     let opacity = 1.0;
-    
-    // Якщо до кінця TTL залишилось менше або рівно 3 хвилини (і ціль ще не прострочена)
-    if (timeLeft <= FADE_TIME && timeLeft > 0) {
-      opacity = Math.max(0.3, +(timeLeft / FADE_TIME).toFixed(2));
+    if (timeLeft <= FADE_TIME && timeLeft > 0) opacity = Math.max(0.3, +(timeLeft / FADE_TIME).toFixed(2));
+
+    let est;
+    if (t.pts.length >= 2 && !t.reg && t.type !== 'boom') {
+      const a = t.pts[0], b = t.pts[t.pts.length - 1], total = dist(a, b);
+      if (total > 0.05) {
+        const mins = Math.max(0, ref - (t.t0 || t.t)) / 60e3;
+        const k = Math.min(1, ((SPEED[t.type] || SPEED.shahed) * mins) / total);
+        est = [+(a[0] + (b[0] - a[0]) * k).toFixed(4), +(a[1] + (b[1] - a[1]) * k).toFixed(4)];
+      }
     }
-    
-    return { ...t, opacity };
+    return { ...t, opacity, est };
   }).sort((a, b) => a.t - b.t);
 
 const BALL_TTL = 15 * 60e3;
@@ -524,10 +540,21 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   const pollNext = () => {
     for (let i = 0; i < CHANNELS.length; i++) {
       const ch = CHANNELS[rot++ % CHANNELS.length], st = chStat[ch];
-      if (!st.busy && !((st.until || 0) > Date.now())) return pollTG(ch);
+      if (st && !st.busy && !((st.until || 0) > Date.now())) return pollTG(ch);
     }
   };
-  const warmup = async () => { for (const ch of CHANNELS) { await pollTG(ch); await sleep(700); } };
+  const warmup = async () => {
+    for (const ch of CHANNELS.slice()) { await pollTG(ch); await sleep(700); }
+    // вилучаємо канали, яких не існує або де немає публічного перегляду (429 і збої мережі не чіпаємо)
+    const bad = CHANNELS.filter(c => chStat[c] && !chStat[c].ok && chStat[c].nop >= 1);
+    if (bad.length && bad.length < CHANNELS.length) {
+      logErr('вилучено недійсні канали: ' + bad.join(', '));
+      console.log('Вилучено недійсні канали: ' + bad.join(', '));
+      CHANNELS = CHANNELS.filter(c => !bad.includes(c));
+      bad.forEach(c => delete chStat[c]);
+    }
+    console.log('Робочі канали (' + CHANNELS.length + '): ' + CHANNELS.join(', '));
+  };
   pollAlerts().then(save); setInterval(pollAlerts, 30e3); setInterval(save, 60e3);
   const tick = () => { pollNext(); setTimeout(tick, Math.max(1200, Math.round(POLL_EVERY / Math.max(1, CHANNELS.length)))); };
   warmup().then(tick);

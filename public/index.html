@@ -1,11 +1,15 @@
 <!doctype html>
 <html lang="uk"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#12151b"><script>try{var t=(JSON.parse(localStorage.getItem("am_settings")||"{}").theme)||localStorage.getItem("theme")||"dark";if(t==="auto")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.setAttribute("data-theme",t)}catch(e){}</script><link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><link rel="icon" href="avatar.png"><link rel="apple-touch-icon" href="avatar.png">
+<meta name="theme-color" content="#12151b"><script>try{var t=(JSON.parse(localStorage.getItem("am_settings")||"{}").theme)||localStorage.getItem("theme")||"dark";if(t==="auto")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.setAttribute("data-theme",t)}catch(e){}</script><link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><link rel="icon" type="image/png" sizes="192x192" href="/avatar-192.png"><link rel="apple-touch-icon" href="avatar.png">
 <title>Мапа тривог України в реальному часі — AlertMap</title>
 <meta name="description" content="Інтерактивна карта повітряних тривог України онлайн: рівні загроз, балістика, дрони, звукові сповіщення та офлайн-режим." />
 <meta name="keywords" content="карта тривог, повітряна тривога, мапа тривог україни, тривоги онлайн, alerts.in.ua" />
 <meta name="google-site-verification" content="J_pkVY15dwY4gYqYHQC6ummAFAZ2f3V4BCsXTcvyixM" />
+<meta property="og:site_name" content="AlertMap">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","name":"AlertMap","alternateName":"Мапа тривог України","url":"https://alert-map-ect7.onrender.com/"}
+</script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{--bg:#12151b;--mapbg:#12151b;--panel:rgba(22,25,31,.92);--b:#2d323c;--txt:#eceff4;--mut:#8a93a3;--btn:#262b35;--btn-b:#3a404c;--lbl:#e9ecf1;--lbl-sh:#000;--accent:#4f8fe0;--on-accent:#fff;
@@ -204,6 +208,7 @@ let COL={yellow:['#b8921c','#7c6317'],red:['#9a2429','#5e2228'],art:['#7a4a1e','
 const map=L.map('map',{minZoom:5,maxZoom:17,attributionControl:false,zoomSnap:.25}).setView([48.7,31.3],6);
 map.fitBounds([[44.2,22.1],[52.4,40.3]],{padding:[10,10]});map.setMaxBounds([[42,18],[55,44]]);
 let REF=Date.now(),STALE=false,LG=0,R=[],kyiv,kyivZ=null,diagTxt='',showDiag=false,snaps=[],threats=[],liveAlerts=[],mode='live',T=Date.now(),play=null;
+let TRACK='#fff';
 const tg=L.layerGroup().addTo(map);
 
 const pad=n=>String(n).padStart(2,'0');
@@ -280,7 +285,8 @@ function renderBall(RT){
 
 /* ---------- Плавний рух цілей ----------
    Маркери живуть між оновленнями. Якщо відомий напрямок (є точка курсу), ціль повільно «летить» до неї
-   зі швидкістю свого типу (не далі 92% шляху), а будь-який стрибок позиції згладжується. */
+   зі швидкістю свого типу (не далі 92% шляху), а будь-який стрибок позиції згладжується.
+   Рух відраховується від t0 — моменту, коли позиція цілі була відома (а не від останнього уточнення курсу). */
 const mk=L.layerGroup().addTo(map),MK=new Map(),SPD={shahed:.05,jet:.17,missile:.22,ballistic:.55}; // км/с
 let refAt=performance.now();
 const kmBetween=(a,b)=>Math.hypot((b[0]-a[0])*111.3,(b[1]-a[1])*111.3*Math.cos(a[0]*Math.PI/180));
@@ -289,9 +295,13 @@ function projPos(h){
   const a=h.pts[0],z=h.pts[h.pts.length-1];
   if(h.pts.length<2||h.reg)return a;
   const d=kmBetween(a,z);if(d<.5)return a;
-  const f=Math.min(.92,Math.max(0,(nowT()-h.t)/1000*(SPD[h.type]||.05))/d);
+  const f=Math.min(.92,Math.max(0,(nowT()-(h.t0||h.t))/1000*(SPD[h.type]||.05))/d);
   return[a[0]+(z[0]-a[0])*f,a[1]+(z[1]-a[1])*f];
 }
+/* Згасання: ціль яскрава до останньої хвилини життя, потім плавно стає повністю прозорою */
+const FADE_MS=60e3;
+const lifeOf=h=>h.type==='boom'?Math.min(S.life*60e3,15*60e3):S.life*60e3;
+const fadeOf=h=>{const left=lifeOf(h)-(nowT()-h.t);return left>=FADE_MS?1:Math.max(0,left/FADE_MS)};
 function syncMarker(h,b,fade,fresh,cn){
   const sig=[h.type,Math.round(b),isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n:0,S.cred?Math.min(5,cn):0].join('|');
   let e=MK.get(h.id);
@@ -303,6 +313,7 @@ let lastF=performance.now();
 (function frame(t){
   const dt=Math.min(.25,(t-lastF)/1000);lastF=t;const k=1-Math.exp(-dt*3); // згладжування ~0.3 с
   for(const e of MK.values()){
+    const o=(e.h._b??1)*fadeOf(e.h);if(Math.abs(o-(e.op??-1))>.01){e.m.setOpacity(o);e.op=o}
     const p=projPos(e.h),c=e.cur;
     if(Math.abs(p[0]-c[0])+Math.abs(p[1]-c[1])<1e-7)continue;
     e.cur=[c[0]+(p[0]-c[0])*k,c[1]+(p[1]-c[1])*k];e.m.setLatLng(e.cur);
@@ -332,7 +343,7 @@ function render(){
     const a=h.pts[0],z=h.pts[h.pts.length-1];
     if(zs&&h.type!=='boom'&&!nearZone(a[0],a[1],zs,h.reg?45:10))continue;
     vis.push(h);seen.add(h.id);
-    const cn=credN(h),cf=S.cred?[.62,.8,.92,1][Math.min(cn,4)-1]:1,fade=Math.max(.45,1-.55*(RT-h.t)/LF)*cf*(mode==='live'&&STALE?.7:1),b=h.pts.length>1?bearing(a,z):0;
+    const cn=credN(h),cf=S.cred?[.62,.8,.92,1][Math.min(cn,4)-1]:1;h._b=cf*(mode==='live'&&STALE?.7:1);const fade=Math.max(.02,h._b*fadeOf(h)),b=h.pts.length>1?bearing(a,z):0;
     if(h.pts.length>1&&(S.trails==='all'||(S.trails==='fast'&&h.type!=='shahed')))L.polyline(h.pts,{color:TRACK,weight:1.5,dashArray:'5 6',opacity:.55*fade,interactive:false}).addTo(tg);
     if(h.reg&&S.regZone)L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
     syncMarker(h,b,fade,mode==='live'&&!STALE&&RT-h.t<60e3,cn);

@@ -240,6 +240,7 @@ function loadGeo() {
     NAMES.get(norm(n)).push(k);
   }
   CANON.set(norm('м. Київ'), 'м. Київ');
+  try { loadUA(); } catch (e) { logErr('oblasts.json: ' + e.message); }
 }
 async function loadTree() {
   const j = await (await get('https://siren.pp.ua/api/v3/regions')).json(), t = {};
@@ -323,6 +324,72 @@ const BULLET = /^[\s▪️•🔹🔸🔻🔺➡️→▶️\-–—*·]+/u;
 const seen = new Set();
 const SPEED = { shahed: 0.03, jet: 0.06, missile: 0.12, ballistic: 0.4 }, REACH0 = 0.35;
 
+// ---- Звідки летить ціль: «з Брянщини», «з боку Білорусі», «з акваторії Чорного моря» ----
+// [назва, [широта, довгота] місця за межами України (приблизно), основи слів]. «Росії» без точки: місце беремо найближче до цілі.
+const ORG_DEF = [
+  ['Брянщини', [52.9, 33.4], 'брянськ|брянщин'], ['Курщини', [51.75, 36.2], 'курськ|курщин'], ['Бєлгородщини', [50.6, 36.6], 'бєлгород|белгород'],
+  ['Воронежчини', [51.6, 39.2], 'воронез|воронеж'], ['Орловщини', [52.9, 36.1], 'орловськ|орловщин'], ['Смоленщини', [54.6, 32.2], 'смоленськ|смоленщин|шаталов'],
+  ['Ростовщини', [47.4, 40.3], 'ростов'], ['Краснодарського краю', [46.1, 38.2], 'краснодарськ|кубан|приморськ[оа]?-ахтарськ|ахтарськ|єйськ'],
+  ['Криму', [45.2, 34.2], 'крим|чауд[аи]'], ['Чорного моря', [44.8, 32.5], 'чорного\\s+моря|чорному\\s+морі|чорномор'], ['Азовського моря', [46.2, 36.3], 'азовськ'],
+  ['Білорусі', [52.3, 30.0], 'білорус|біларус|бєларус|рб(?![а-яіїєґ])'], ['Росії', null, 'росі[їяюй]|рф(?![а-яіїєґ])|території\\s+рф|москал']
+].map(([n, p, w]) => ({ n, p, re: new RegExp(LB + '(?:' + w + ")[а-яіїєґ'’]*", 'i') }));
+const FROM_CUE = /(?:^|[\s(,;:—–-])(?:з|із|зі|від|з\s+боку|із\s+боку|з\s+напрямку|з\s+території|з\s+акваторії|з\s+районів?)\s+(?:[а-яіїєґ'’-]+\s+){0,2}$/i;
+const ARROW_AFTER = /^\s*(?:→|➡️?|->|—>|-->)/;
+function originOf(line) {
+  line = String(line);
+  for (const o of ORG_DEF) {
+    const m = o.re.exec(line); if (!m) continue;
+    const before = line.slice(Math.max(0, m.index - 40), m.index), after = line.slice(m.index + m[0].length);
+    if (FROM_CUE.test(before) || (!/[а-яіїєґa-z]/i.test(before) && ARROW_AFTER.test(after))) return { n: o.n, p: o.p ? o.p.slice() : null, x: !!o.p };
+  }
+}
+// Місця запуску, з яких можна здогадатися про напрямок, якщо канал його не вказав (штрихова «ймовірна» лінія, не факт).
+const LAUNCH = [['Брянщини', [52.9, 33.4]], ['Курщини', [51.75, 36.2]], ['Бєлгородщини', [50.6, 36.6]], ['Краснодарського краю', [46.1, 38.2]], ['Криму', [45.2, 34.2]], ['Білорусі', [52.3, 30.0]]];
+function inferOrigin(p) {
+  let best = null, bd = 4.5;
+  for (const [n, q] of LAUNCH) { const d = dist(p, q); if (d < bd) { bd = d; best = { n, p: q.slice(), x: false }; } }
+  return best;
+}
+// Контури областей: точка «в Україні» (для визначення, де ціль перетинає кордон).
+const UA_POLYS = [];
+function loadUA() {
+  const g = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'oblasts.json'))); UA_POLYS.length = 0;
+  for (const f of g.features) {
+    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [];
+    for (const poly of polys) { const r = poly[0]; let a = 90, b = -90, c = 180, d = -180; for (const [x, y] of r) { a = Math.min(a, y); b = Math.max(b, y); c = Math.min(c, x); d = Math.max(d, x); } UA_POLYS.push({ b: [a, b, c, d], r }); }
+  }
+}
+function inUA(la, lo) {
+  for (const q of UA_POLYS) {
+    if (la < q.b[0] || la > q.b[1] || lo < q.b[2] || lo > q.b[3]) continue;
+    let c = false; const r = q.r;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) if ((r[i][1] > la) !== (r[j][1] > la) && lo < (r[j][0] - r[i][0]) * (la - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) c = !c;
+    if (c) return true;
+  }
+  return false;
+}
+// Де відрізок from→to вперше заходить в Україну (крок ≈ 5 км); null, якщо не заходить.
+function entryPoint(from, to) {
+  if (!UA_POLYS.length) return null;
+  if (inUA(from[0], from[1])) return from.slice();
+  const n = Math.max(1, Math.ceil(dist(from, to) / 0.05));
+  for (let k = 1; k <= n; k++) { const f = k / n, la = from[0] + (to[0] - from[0]) * f, lo = from[1] + (to[1] - from[1]) * f; if (inUA(la, lo)) return [+la.toFixed(4), +lo.toFixed(4)]; }
+  return null;
+}
+function segDist(p, a, b) {
+  const c = Math.cos(a[0] * Math.PI / 180), ax = a[1] * c, ay = a[0], bx = b[1] * c, by = b[0], px = p[1] * c, py = p[0], dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+  let u = l ? ((px - ax) * dx + (py - ay) * dy) / l : 0; u = Math.max(0, Math.min(1, u));
+  return Math.hypot(px - ax - u * dx, py - ay - u * dy);
+}
+// Трек цілі: усі спостережені позиції [час, широта, довгота]. Клієнт рухає значок між ними, а не «телепортує».
+function obsPush(x, t, p) {
+  x.trk = x.trk || []; const l = x.trk[x.trk.length - 1];
+  if (l && Math.abs(l[0] - t) < 5e3 && dist([l[1], l[2]], p) < 0.02) return;
+  x.trk.push([t, +p[0].toFixed(4), +p[1].toFixed(4)]); x.trk.sort((a, b) => a[0] - b[0]);
+  if (x.trk.length > 14) x.trk.splice(1, x.trk.length - 14);
+}
+const betterOrg = (n, old) => n && (!old || (n.x && !old.x) || (n.x === old.x && n.p));
+
 const orphans = new Map();
 function noCourse(ref = Date.now()) { let n = 0; for (const [k, v] of orphans) { if (ref - v.t > TTL) orphans.delete(k); else n += v.n; } return n; }
 const COUNT_WIN = 3 * 60e3;
@@ -340,14 +407,21 @@ function recount(x) {
 function addThreat(o) {
   const src = { ch: o.ch, id: o.post, key: o.id, t: o.t, text: o.text, ...(o.n ? { n: o.n } : {}), ...(o.nMin ? { m: 1 } : {}) };
   const join = x => { x.src = x.src || []; if (!x.src.some(a => a.key === src.key)) x.src.push(src); };
+  const lastP = o.pts[o.pts.length - 1];
   for (const x of threats.values()) {
     if (x.type !== o.type || x.dead || Math.abs(x.t - o.t) > TTL) continue;
     // радіус злиття росте з часом між постами: ціль за кілька хвилин встигає відлетіти далі
     const dtm = Math.abs(x.t - o.t) / 60e3;
     const rad = o.type === 'boom' ? 0.25 : Math.min(0.8, 0.15 + (SPEED[o.type] || SPEED.shahed) * dtm * 0.5);
-    if (dist(x.pts[x.pts.length - 1], o.pts[o.pts.length - 1]) < rad) {
+    if (dist(x.pts[x.pts.length - 1], lastP) < rad) {
       join(x);
-      if (o.t >= x.t) { x.t = o.t; if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; } x.text = o.text; x.ch = o.ch; }
+      if (betterOrg(o.org, x.org)) x.org = o.org;
+      if (o.t >= x.t) {
+        x.t = o.t;
+        if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; x.ent = false; if (!o.reg) obsPush(x, o.t, o.pts[0]); if (o.pts.length > 1) x.dst = lastP; }
+        else x.dst = o.pts[0];
+        x.text = o.text; x.ch = o.ch;
+      }
       recount(x);
       return;
     }
@@ -361,14 +435,38 @@ function addThreat(o) {
     }
     if (best) {
       join(best);
-      if (o.t >= best.t) { best.t = o.t; best.text = o.text; best.ch = o.ch; if (bd > 0.25) best.pts = [best.pts[0], o.pts[0]]; }
+      if (betterOrg(o.org, best.org)) best.org = o.org;
+      if (o.t >= best.t) { best.t = o.t; best.text = o.text; best.ch = o.ch; best.dst = o.pts[0]; if (bd > 0.25) best.pts = [best.pts[0], o.pts[0]]; }
       recount(best);
       return;
+    }
+    // «з Брянщини на Сумщину» без відомого місця цілі: ставимо її там, де відрізок з-за кордону заходить в Україну
+    if (o.type !== 'boom' && o.org && o.org.x) {
+      const en = entryPoint(o.org.p, o.pts[0]);
+      if (en && dist(en, o.pts[0]) > 0.15) {
+        Object.assign(o, { pts: [en, o.pts[0]], dst: o.pts[0], dest: false, reg: false, ent: true, trk: [[o.t, en[0], en[1]]], src: [src], t0: o.t });
+        recount(o); threats.set(o.id, o); return;
+      }
     }
     if (o.type !== 'boom') orphans.set(o.type + '@' + o.pts[0].map(v => v.toFixed(1)).join(','), { t: o.t, n: o.n || 1 }); // «курс на X» без відомого місця: не малюємо, лише рахуємо
     return;
   }
-  o.src = [src]; o.t0 = o.t; recount(o); threats.set(o.id, o);
+  // справжня позиція для цілі, яку ми раніше лише оцінили на кордоні: уточнюємо її, а не дублюємо
+  if (!o.reg) for (const x of threats.values()) {
+    if (!x.ent || x.type !== o.type || x.dead || x.t > o.t || o.t - x.t > TTL || !x.dst || segDist(o.pts[0], x.pts[0], x.dst) > 0.6) continue;
+    join(x); x.ent = false; x.t = o.t; x.t0 = o.t; x.pts = o.pts; x.reg = false; x.trk = [[o.t, +o.pts[0][0].toFixed(4), +o.pts[0][1].toFixed(4)]];
+    if (o.pts.length > 1) x.dst = lastP;
+    if (betterOrg(o.org, x.org)) x.org = o.org;
+    x.text = o.text; x.ch = o.ch; recount(x); return;
+  }
+  o.src = [src]; o.t0 = o.t;
+  o.trk = o.reg ? [] : [[o.t, +o.pts[0][0].toFixed(4), +o.pts[0][1].toFixed(4)]];
+  if (o.pts.length > 1) o.dst = lastP;
+  if (o.type === 'boom') delete o.org;
+  else if (o.org && !o.org.p) { const g = inferOrigin(o.pts[0]); o.org = g ? { n: o.org.n, p: g.p, x: false } : undefined; }
+  else if (!o.org && !o.reg && (o.type === 'shahed' || o.type === 'jet')) o.org = inferOrigin(o.pts[0]);
+  if (!o.org) delete o.org;
+  recount(o); threats.set(o.id, o);
 }
 function closeNear(o) {
   let best = null, bd = 0.6;
@@ -449,7 +547,7 @@ async function pollTG(ch) {
           n++; return;
         }
         const cnt = countOf(line), cmin = !cnt && countMinOf(line);
-        const o = { id: key, post: id, type: k, t: tms, pts, text: line.trim().slice(0, 300), ch, dest: pts.length === 1 && (DEST.test(line) || (/(?:^|[\s,])(?:на|до)\s/i.test(line) && !/біля|над\s|район|околиц|поблизу|\sв\s|\sу\s/i.test(line))), n: cnt || (cmin ? 2 : undefined), nMin: cmin || undefined, reg: !!(raw[0] && raw[0][2]) };
+        const o = { id: key, post: id, type: k, t: tms, pts, text: line.trim().slice(0, 300), ch, dest: pts.length === 1 && (DEST.test(line) || (/(?:^|[\s,])(?:на|до)\s/i.test(line) && !/біля|над\s|район|околиц|поблизу|\sв\s|\sу\s/i.test(line))), n: cnt || (cmin ? 2 : undefined), nMin: cmin || undefined, reg: !!(raw[0] && raw[0][2]), org: originOf(line) };
         
         if (CLOSING.test(line)) { 
           closeNear(o); 
@@ -613,5 +711,5 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
-exports._t = { countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
+exports._t = { originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
 if (require.main === module) exports.start();

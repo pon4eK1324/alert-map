@@ -291,14 +291,15 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
  <div id="rp">
   <div class="row"><button id="pl" style="flex:0 0 46px">▶</button>
   <select id="hr"><option value="6">6 год</option><option value="12">12 год</option><option value="24" selected>24 год</option><option value="48">48 год</option></select>
-  <select id="sp"><option value="60">60×</option><option value="300" selected>300×</option><option value="900">900×</option><option value="1800">1800×</option></select></div>
+  <select id="sp"><option value="60">60×</option><option value="150">150×</option><option value="300" selected>300×</option><option value="900">900×</option><option value="1800">1800×</option><option value="3600">3600×</option></select></div>
+  <div class="row"><button id="pv" title="Попередня подія (←)" style="flex:0 0 46px">⏮</button><button id="nx" title="Наступна подія (→)" style="flex:0 0 46px">⏭</button><label style="flex:1;display:flex;gap:6px;align-items:center;font-size:12.5px;white-space:nowrap" title="Коли на мапі немає цілей, час іде швидше"><input type="checkbox" id="sk" checked> пропускати тишу</label></div>
   <input id="sl" type="range" step="60000">
  </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const $=id=>document.getElementById(id), KYIV='м. Київ';
-let NOC=0,WIN=10*60e3; // скільки хвилин ціль лишається на мапі після останнього повідомлення (значення приходить із сервера)
+let VISN=0,NOC=0,WIN=10*60e3; // скільки хвилин ціль лишається на мапі після останнього повідомлення (значення приходить із сервера)
 let BASE_DARK={fillColor:'#2b303b',fillOpacity:1,color:'#1b1f27',weight:.8};
 const BASE_SAT={fillColor:'#000',fillOpacity:0,color:'#fff',opacity:.4,weight:.7};
 let BASE=BASE_DARK,sat=false;
@@ -455,6 +456,7 @@ const TRUST=['kpszsu'];
 const chSet=a=>[...new Set(a.map(x=>String(x||'').toLowerCase()))];
 const ballConf=h=>{const c=chSet((h.src&&h.src.length?h.src:[{ch:h.ch}]).map(s=>s.ch));return c.length>=S.ballMin||c.some(x=>TRUST.includes(x))};
 const ballOk=v=>{const c=chSet(v.map(w=>w.ch));return v.length&&(c.length>=S.ballMin||c.some(x=>TRUST.includes(x)))?v:[]};
+const t1Of=h=>h._t1??(h._t1=(h.src&&h.src.length?Math.min(...h.src.map(s=>s.t)):(h.trk&&h.trk.length?h.trk[0][0]:h.t)));
 function render(){
   $('tl').textContent=fmt(T);
   const items=(mode==='live'?liveAlerts:alertsAt(T)).map(norm);
@@ -469,7 +471,7 @@ function render(){
   const zs=useZ?[...R.filter(r=>air.some(i=>i.k===r.k||i.k===r.o)).map(r=>r.z),...(kyivZ&&air.some(i=>i.k===KYIV)?[kyivZ]:[])]:null;
   for(const h of threats){
     const LF=h.type==='boom'?Math.min(LIFE,15*60e3):LIFE;
-    if(h.t>RT||RT-h.t>LF||(h.dead&&RT>=h.dead)||!S[TKEY[h.type]]||(h.type==='ballistic'&&!ballConf(h)))continue;
+    if(t1Of(h)>RT||RT-h.t>LF||(h.dead&&RT>=h.dead)||!S[TKEY[h.type]]||(h.type==='ballistic'&&!ballConf(h)))continue;
     const a=h.pts[0],z=h.pts[h.pts.length-1];
     if(zs&&h.type!=='boom'&&!nearZone(a[0],a[1],zs,h.reg?45:10))continue;
     vis.push(h);seen.add(h.id);
@@ -481,7 +483,7 @@ function render(){
     else for(let i=0;i<N;i++){const m={...h,id:h.id+'~'+i,n:i===0&&h.n>N?h.n:0,_i:i,_N:N};seen.add(m.id);syncMarker(m,b,fade,fr,cn)} // «N×» → N окремих іконок (не більше 10; решта — числом біля першої)
   }
   for(const [id,e] of MK)if(!seen.has(id)){mk.removeLayer(e.m);MK.delete(id)}
-  stats(vis,items);renderBall(RT);renderFeed();
+  VISN=vis.length;stats(vis,items);renderBall(RT);renderFeed();
 }
 async function live(){
   if(mode!=='live')return;
@@ -503,16 +505,37 @@ async function loadHistory(){
   const h=await (await fetch('/api/history?hours='+$('hr').value)).json();
   if(h.ttl)WIN=h.ttl;snaps=h.snaps;threats=h.threats;BALL=h.ball||[];if(h.ballTtl)BTTL=h.ballTtl;const sl=$('sl');sl.min=h.from;sl.max=h.now;sl.value=h.from;T=h.from;render();
 }
-const stop=()=>{clearInterval(play);play=null;$('pl').textContent='▶'};
+const stop=()=>{if(play)cancelAnimationFrame(play);play=null;$('pl').textContent='▶'};
 function setMode(m){mode=m;stop();$('bl').classList.toggle('on',m==='live');$('br').classList.toggle('on',m==='replay');$('rp').classList.toggle('show',m==='replay');m==='live'?live():loadHistory()}
 $('bl').onclick=()=>setMode('live');$('br').onclick=()=>setMode('replay');$('hr').onchange=loadHistory;
 $('sl').oninput=e=>{T=+e.target.value;render()};
+/* Таймлапс: час іде щокадру (а не стрибками раз на 0,1 с), значки рухаються плавно, повна перемальовка — раз на ~0,14 с.
+   «Пропускати тишу»: поки на мапі немає жодної цілі, час іде в 15 разів швидше. */
+let playLast=0,rndAt=0;
+function playLoop(ts){
+  if(!play)return;
+  const dt=Math.min(.25,(ts-playLast)/1000);playLast=ts;
+  T+=dt*(+$('sp').value)*($('sk').checked&&VISN===0?15:1)*1000;
+  const mx=+$('sl').max;
+  if(T>=mx){T=mx;$('sl').value=T;render();stop();return}
+  $('sl').value=T;$('tl').textContent=fmt(T);
+  if(ts-rndAt>140){rndAt=ts;render()}
+  play=requestAnimationFrame(playLoop);
+}
 $('pl').onclick=()=>{
   if(play)return stop();
   if(T>=+$('sl').max-1000)T=+$('sl').min;
-  $('pl').textContent='⏸';
-  play=setInterval(()=>{T+=$('sp').value*100;const mx=+$('sl').max;if(T>=mx){T=mx;stop()}$('sl').value=T;render()},100);
+  $('pl').textContent='⏸';playLast=performance.now();rndAt=0;play=requestAnimationFrame(playLoop);
 };
+// Перехід до попередньої / наступної події (нова ціль або зміна тривог)
+function evTimes(){const a=new Set();for(const s of snaps)a.add(s.t);for(const h of threats)a.add(t1Of(h));return[...a].filter(x=>x>=+$('sl').min&&x<=+$('sl').max).sort((x,y)=>x-y)}
+function jump(dir){const e=evTimes();let n=dir>0?e.find(x=>x>T+1500):[...e].reverse().find(x=>x<T-1500);if(n==null)n=dir>0?+$('sl').max:+$('sl').min;T=n;$('sl').value=T;render()}
+$('nx').onclick=()=>jump(1);$('pv').onclick=()=>jump(-1);
+document.addEventListener('keydown',e=>{
+  if(mode!=='replay'||/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test((e.target||{}).tagName||''))return;
+  const mv=d=>{T=Math.max(+$('sl').min,Math.min(+$('sl').max,T+d));$('sl').value=T;render()};
+  if(e.code==='Space'){e.preventDefault();$('pl').click()}else if(e.key==='ArrowRight')mv(300e3);else if(e.key==='ArrowLeft')mv(-300e3);
+});
 $('logo').onclick=$('st').onclick=()=>{showDiag=!showDiag;document.body.classList.toggle('diag',showDiag);$('src').textContent=showDiag||diagTxt.startsWith('Тривоги: помилка')?diagTxt:''};
 $('lgb').onclick=()=>$('lg').classList.toggle('open');
 if(innerWidth>640&&innerHeight>500)$('lg').classList.add('open');

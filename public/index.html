@@ -330,7 +330,7 @@ function styleFor(k,o,items){
 }
 
 /* ---------- Налаштування (зберігаються в браузері одним об'єктом) ---------- */
-const DEF={theme:'dark',accent:'#4f8fe0',isz:36,iconBg:false,pulse:false,badge:true,trails:'off',origin:true,regZone:false,
+const DEF={theme:'dark',accent:'#4f8fe0',isz:36,iconBg:false,pulse:false,badge:true,trails:'off',regZone:false,
  tShahed:true,tMissile:true,tBallistic:true,onlyAlert:false,life:15,v:2,cShahed:'#f5b83d',cMissile:'#ff5d5d',cBallistic:'#c77dff',tJet:true,cJet:'#4fd8ff',tBoom:true,cBoom:'#ff7a1a',cred:true,ballMin:2,
  cYellow:'',cRed:'',cArt:'',zop:100,raionB:true,cityLbl:true,oblLbl:true,fscale:100,stats:true,legend:true,ballBanner:true,ballSound:false};
 let S={...DEF};
@@ -475,11 +475,6 @@ function render(){
     vis.push(h);seen.add(h.id);
     const cn=credN(h),cf=1;h._b=1;const fade=Math.max(.02,h._b*fadeOf(h)),b=motion(h).b;
     if(h.pts.length>1&&(S.trails==='all'||(S.trails==='fast'&&h.type!=='shahed')))L.polyline(h.pts,{color:TRACK,weight:1.5,dashArray:'5 6',opacity:.55*fade,interactive:false}).addTo(tg);
-    if(S.origin&&h.org&&h.org.p&&h.type!=='boom'&&!h.reg){ // звідки летить: місце запуску → спостережені позиції
-      const nt=nowT(),tr=(h.trk||[]).filter(o=>o[0]<=nt),pp=tr.length?tr.map(o=>[o[1],o[2]]):[a],cl=cssv('--c-'+h.type)||TRACK;
-      L.polyline([h.org.p,...pp],{color:cl,weight:1.6,dashArray:h.org.x?'2 6':'1 9',opacity:(h.org.x?.7:.4)*fade,interactive:false}).addTo(tg);
-      L.circleMarker(h.org.p,{radius:3,color:cl,weight:1,fillColor:cl,fillOpacity:.6,opacity:.7*fade,interactive:false}).bindTooltip((h.org.x?'з ':'ймовірно з ')+h.org.n,{direction:'top'}).addTo(tg);
-    }
     if(h.reg&&S.regZone)L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
     const fr=mode==='live'&&!STALE&&RT-h.t<60e3,N=h.type==='boom'||h.nMin?1:Math.min(h.n||1,10); // «2+» (кілька, число невідоме) — один значок із підписом
     if(N<2)syncMarker(h,b,fade,fr,cn);
@@ -625,7 +620,7 @@ map.on('zoomend',fs);fs();
 /* ---------- Панель «Вигляд» ---------- */
 const ACCS=['#4f8fe0','#2ec4b6','#a78bfa','#ff9f43','#ff6b9d','#9be564'];
 const UI=[['Тема',[['theme','seg',[['auto','Авто'],['light','☀ Світла'],['dark','☾ Темна']]],['accent','acc']]],
- ['Значки',[['isz','range','Розмір',20,64],['iconBg','tog','Круглий фон значка'],['pulse','tog','Пульсація нових'],['badge','tog','Лічильник групи (2×)'],['trails','seg',[['off','Без ліній'],['fast','Ракети'],['all','Усі']],'Лінії курсу'],['origin','tog','Звідки летить (лінія від кордону)'],['regZone','tog','Зона, якщо відома лише область']]],
+ ['Значки',[['isz','range','Розмір',20,64],['iconBg','tog','Круглий фон значка'],['pulse','tog','Пульсація нових'],['badge','tog','Лічильник групи (2×)'],['trails','seg',[['off','Без ліній'],['fast','Ракети'],['all','Усі']],'Лінії курсу'],['regZone','tog','Зона, якщо відома лише область']]],
  ['Цілі',[['tShahed','tog','Шахеди (гвинтові)'],['tJet','tog','Реактивні шахеди'],['tBoom','tog','Вибухи'],['ballMin','seg',[[1,'1'],[2,'2'],[3,'3']],'Балістика: мін. каналів для банера і значка'],['tMissile','tog','Ракети'],['tBallistic','tog','Балістика'],['onlyAlert','tog','Лише там, де є тривога'],['life','seg',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[30,'30 хв']],'Скільки лишається на мапі'],['cShahed','col','Колір шахеда'],['cJet','col','Колір реактивного'],['cBoom','col','Колір вибухів'],['cMissile','col','Колір ракети'],['cBallistic','col','Колір балістики']]],
  ['Зони тривог',[['cYellow','col','Жовтий рівень'],['cRed','col','Червоний рівень'],['cArt','col','Артобстріл'],['zop','range','Насиченість, %',30,100],['raionB','tog','Межі районів']]],
  ['Підписи',[['cityLbl','tog','Міста й села'],['oblLbl','tog','Назви областей'],['fscale','range','Розмір шрифту, %',70,150],['stats','tog','Лічильники зверху'],['legend','tog','Легенда']]],

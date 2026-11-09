@@ -330,7 +330,7 @@ function styleFor(k,o,items){
 }
 
 /* ---------- Налаштування (зберігаються в браузері одним об'єктом) ---------- */
-const DEF={theme:'dark',accent:'#4f8fe0',isz:36,iconBg:false,pulse:false,badge:true,trails:'off',regZone:false,
+const DEF={theme:'dark',accent:'#4f8fe0',isz:36,iconBg:false,pulse:false,badge:true,trails:'off',origin:true,regZone:false,
  tShahed:true,tMissile:true,tBallistic:true,onlyAlert:false,life:15,v:2,cShahed:'#f5b83d',cMissile:'#ff5d5d',cBallistic:'#c77dff',tJet:true,cJet:'#4fd8ff',tBoom:true,cBoom:'#ff7a1a',cred:true,ballMin:2,
  cYellow:'',cRed:'',cArt:'',zop:100,raionB:true,cityLbl:true,oblLbl:true,fscale:100,stats:true,legend:true,ballBanner:true,ballSound:false};
 let S={...DEF};
@@ -357,10 +357,11 @@ $('lgi').style.alignItems='center';$('lgi').style.flexWrap='wrap';
 
 const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 /* Вікно цілі: список джерел (канал, час, текст, посилання на пост у Telegram) */
+const originLine=h=>h.org&&h.type!=='boom'?`<div style="font-size:12px;margin-top:4px">${h.org.x?'Летить з':'Ймовірно з'}: <b>${esc(h.org.n)}</b></div>`:'';
 function popup(h){
   const src=(h.src&&h.src.length?h.src:[{ch:h.ch,id:(h.id||'').split('#')[0],t:h.t,text:h.text}]).slice().sort((x,y)=>y.t-x.t);
   const rows=src.slice(0,8).map(s=>`<div style="margin:6px 0 0;padding-top:5px;border-top:1px solid var(--b)"><a href="https://t.me/${esc(s.id)}" target="_blank" rel="noopener"><b>@${esc(s.ch||'')}</b> · ${pad(new Date(s.t).getHours())}:${pad(new Date(s.t).getMinutes())}</a><br><span style="font-size:12px">${esc(s.text).slice(0,160)}</span></div>`).join('');
-  return `<b>${TNAME[h.type]||'Ціль'}${h.n>1?' · '+h.n+(h.nMin?'+':'')+'×':''}</b> <span style="color:var(--mut)">· повідомлень: ${src.length}</span><div style="font-size:11.5px;color:var(--mut);margin-top:2px">Достовірність: ${'●'.repeat(Math.min(5,credN(h)))}${'○'.repeat(5-Math.min(5,credN(h)))} · незалежних каналів: ${credN(h)}</div>${rows}${src.length>8?'<div style="font-size:11px;margin-top:4px">… і ще '+(src.length-8)+'</div>':''}<div style="font-size:11px;color:var(--mut);margin-top:6px">${h.reg?'Точне місце невідоме — десь у межах області':'Місце приблизне, за текстом повідомлень'}</div>`;
+  return `<b>${TNAME[h.type]||'Ціль'}${h.n>1?' · '+h.n+(h.nMin?'+':'')+'×':''}</b> <span style="color:var(--mut)">· повідомлень: ${src.length}</span><div style="font-size:11.5px;color:var(--mut);margin-top:2px">Достовірність: ${'●'.repeat(Math.min(5,credN(h)))}${'○'.repeat(5-Math.min(5,credN(h)))} · незалежних каналів: ${credN(h)}</div>${rows}${src.length>8?'<div style="font-size:11px;margin-top:4px">… і ще '+(src.length-8)+'</div>':''}${originLine(h)}<div style="font-size:11px;color:var(--mut);margin-top:6px">${h.reg?'Точне місце невідоме — десь у межах області':'Місце приблизне, за текстом повідомлень'}</div>`;
 }
 /* Чи стоїть ціль у зоні тривоги: точка у полігоні району (або не далі tol км від його межі) */
 function inRing(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
@@ -393,13 +394,32 @@ const mk=L.layerGroup().addTo(map),MK=new Map(),SPD={shahed:.05,jet:.17,missile:
 let refAt=performance.now();
 const kmBetween=(a,b)=>Math.hypot((b[0]-a[0])*111.3,(b[1]-a[1])*111.3*Math.cos(a[0]*Math.PI/180));
 const nowT=()=>mode==='live'?(STALE?REF:REF+(performance.now()-refAt)):T;
-function projPos(h){
-  const a=h.pts[0],z=h.pts[h.pts.length-1];
-  if(h.pts.length<2||h.reg)return a;
-  const d=kmBetween(a,z);if(d<.5)return a;
-  const f=Math.min(.92,Math.max(0,(nowT()-(h.t0||h.t))/1000*(SPD[h.type]||.05))/d);
-  return[a[0]+(z[0]-a[0])*f,a[1]+(z[1]-a[1])*f];
+/* Модель руху. Сервер дає трек спостережень h.trk=[[t,la,lo],…], куди летить h.dst і звідки h.org.
+   Значок їде від останньої спостереженої позиції в бік курсу (точка призначення, інакше напрям останніх двох спостережень,
+   інакше напрям від місця запуску) зі швидкістю типу цілі. Без курсу не вилітає далі ~5 хв польоту. */
+const KM=111.3;
+const unitV=(a,b)=>{const n=(b[0]-a[0])*KM,e=(b[1]-a[1])*KM*Math.cos(a[0]*Math.PI/180),l=Math.hypot(n,e);return l?[n/l,e/l]:null};
+function motion(h){
+  const now=nowT(),tr=h.trk,P0=h.pts[0],ZZ=h.pts[h.pts.length-1];
+  if(h.reg||h.type==='boom')return{p:P0,b:h.pts.length>1?bearing(P0,ZZ):0};
+  if(!tr||!tr.length){ // старі дані без треку
+    if(h.pts.length<2)return{p:P0,b:0};
+    const d=kmBetween(P0,ZZ);if(d<.5)return{p:P0,b:bearing(P0,ZZ)};
+    const f=Math.min(.92,Math.max(0,(now-(h.t0||h.t))/1000*(SPD[h.type]||.05))/d);
+    return{p:[P0[0]+(ZZ[0]-P0[0])*f,P0[1]+(ZZ[1]-P0[1])*f],b:bearing(P0,ZZ)};
+  }
+  let k=tr.length-1;while(k>0&&tr[k][0]>now)k--; // у перегляді історії — остання позиція, відома на цей час
+  const L=tr[k],pL=[L[1],L[2]],v0=SPD[h.type]||.05,dst=h.dst||null;let v=v0,dir=null;
+  if(dst&&kmBetween(pL,dst)>1)dir=unitV(pL,dst);
+  else if(k>0){const q=tr[k-1],pq=[q[1],q[2]],dk=kmBetween(pq,pL),dt=(L[0]-q[0])/1000;
+    if(dk>2&&dt>20){dir=unitV(pq,pL);const vo=dk/dt;if(vo>v0*.5&&vo<v0*2)v=(v0+vo)/2}}
+  if(!dir&&h.org&&h.org.p&&kmBetween(h.org.p,pL)>5)dir=unitV(h.org.p,pL);
+  if(!dir)return{p:pL,b:0};
+  let s=v*Math.max(0,now-L[0])/1000;
+  s=dst?Math.min(s,Math.max(0,kmBetween(pL,dst)-.5)*.97):Math.min(s,v*300);
+  return{p:[pL[0]+dir[0]*s/KM,pL[1]+dir[1]*s/(KM*Math.cos(pL[0]*Math.PI/180))],b:Math.atan2(dir[1],dir[0])*180/Math.PI};
 }
+const projPos=h=>motion(h).p;
 /* Згасання: ціль яскрава до останньої хвилини життя, потім плавно стає повністю прозорою */
 const FADE_MS=3*60e3;
 const lifeOf=h=>h.type==='boom'?Math.min(S.life*60e3,15*60e3):S.life*60e3;
@@ -415,12 +435,17 @@ function syncMarker(h,b,fade,fresh,cn){
 let lastF=performance.now();
 (function frame(t){
   if(COARSE&&t-lastF<30){requestAnimationFrame(frame);return} // на телефоні ~30 к/с — вдвічі менше роботи, плавність та сама
-  const dt=Math.min(.25,(t-lastF)/1000);lastF=t;const k=1-Math.exp(-dt*3); // згладжування ~0.3 с
+  const dt=Math.min(.25,(t-lastF)/1000);lastF=t;const k=1-Math.exp(-dt*3),z=map.getZoom();
   for(const e of MK.values()){
     const o=(e.h._b??1)*fadeOf(e.h);if(Math.abs(o-(e.op??-1))>.01){e.m.setOpacity(o);e.op=o}
     const p=projOff(e.h),c=e.cur;
-    if(Math.abs(p[0]-c[0])+Math.abs(p[1]-c[1])<1e-7)continue;
-    e.cur=[c[0]+(p[0]-c[0])*k,c[1]+(p[1]-c[1])*k];e.m.setLatLng(e.cur);
+    if(mode!=='live'||e.z!==z){e.z=z;e.cur=p;e.m.setLatLng(p);continue} // зум чи історія — без ковзання
+    const d=kmBetween(c,p);if(d<.003)continue;
+    let q;
+    if(d<.4)q=[c[0]+(p[0]-c[0])*k,c[1]+(p[1]-c[1])*k];
+    else{ // нове спостереження: значок їде до нової позиції зі швидкістю цілі (не швидше 2,5 км/с), а не стрибає
+      const f=Math.min(1,Math.min(2.5,Math.max((SPD[e.h.type]||.05)*1.5,d/25))*dt/d);q=[c[0]+(p[0]-c[0])*f,c[1]+(p[1]-c[1])*f]}
+    e.cur=q;e.m.setLatLng(q);
   }
   requestAnimationFrame(frame);
 })(performance.now());
@@ -448,8 +473,13 @@ function render(){
     const a=h.pts[0],z=h.pts[h.pts.length-1];
     if(zs&&h.type!=='boom'&&!nearZone(a[0],a[1],zs,h.reg?45:10))continue;
     vis.push(h);seen.add(h.id);
-    const cn=credN(h),cf=1;h._b=1;const fade=Math.max(.02,h._b*fadeOf(h)),b=h.pts.length>1?bearing(a,z):0;
+    const cn=credN(h),cf=1;h._b=1;const fade=Math.max(.02,h._b*fadeOf(h)),b=motion(h).b;
     if(h.pts.length>1&&(S.trails==='all'||(S.trails==='fast'&&h.type!=='shahed')))L.polyline(h.pts,{color:TRACK,weight:1.5,dashArray:'5 6',opacity:.55*fade,interactive:false}).addTo(tg);
+    if(S.origin&&h.org&&h.org.p&&h.type!=='boom'&&!h.reg){ // звідки летить: місце запуску → спостережені позиції
+      const nt=nowT(),tr=(h.trk||[]).filter(o=>o[0]<=nt),pp=tr.length?tr.map(o=>[o[1],o[2]]):[a],cl=cssv('--c-'+h.type)||TRACK;
+      L.polyline([h.org.p,...pp],{color:cl,weight:1.6,dashArray:h.org.x?'2 6':'1 9',opacity:(h.org.x?.7:.4)*fade,interactive:false}).addTo(tg);
+      L.circleMarker(h.org.p,{radius:3,color:cl,weight:1,fillColor:cl,fillOpacity:.6,opacity:.7*fade,interactive:false}).bindTooltip((h.org.x?'з ':'ймовірно з ')+h.org.n,{direction:'top'}).addTo(tg);
+    }
     if(h.reg&&S.regZone)L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
     const fr=mode==='live'&&!STALE&&RT-h.t<60e3,N=h.type==='boom'||h.nMin?1:Math.min(h.n||1,10); // «2+» (кілька, число невідоме) — один значок із підписом
     if(N<2)syncMarker(h,b,fade,fr,cn);
@@ -595,7 +625,7 @@ map.on('zoomend',fs);fs();
 /* ---------- Панель «Вигляд» ---------- */
 const ACCS=['#4f8fe0','#2ec4b6','#a78bfa','#ff9f43','#ff6b9d','#9be564'];
 const UI=[['Тема',[['theme','seg',[['auto','Авто'],['light','☀ Світла'],['dark','☾ Темна']]],['accent','acc']]],
- ['Значки',[['isz','range','Розмір',20,64],['iconBg','tog','Круглий фон значка'],['pulse','tog','Пульсація нових'],['badge','tog','Лічильник групи (2×)'],['trails','seg',[['off','Без ліній'],['fast','Ракети'],['all','Усі']],'Лінії курсу'],['regZone','tog','Зона, якщо відома лише область']]],
+ ['Значки',[['isz','range','Розмір',20,64],['iconBg','tog','Круглий фон значка'],['pulse','tog','Пульсація нових'],['badge','tog','Лічильник групи (2×)'],['trails','seg',[['off','Без ліній'],['fast','Ракети'],['all','Усі']],'Лінії курсу'],['origin','tog','Звідки летить (лінія від кордону)'],['regZone','tog','Зона, якщо відома лише область']]],
  ['Цілі',[['tShahed','tog','Шахеди (гвинтові)'],['tJet','tog','Реактивні шахеди'],['tBoom','tog','Вибухи'],['ballMin','seg',[[1,'1'],[2,'2'],[3,'3']],'Балістика: мін. каналів для банера і значка'],['tMissile','tog','Ракети'],['tBallistic','tog','Балістика'],['onlyAlert','tog','Лише там, де є тривога'],['life','seg',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[30,'30 хв']],'Скільки лишається на мапі'],['cShahed','col','Колір шахеда'],['cJet','col','Колір реактивного'],['cBoom','col','Колір вибухів'],['cMissile','col','Колір ракети'],['cBallistic','col','Колір балістики']]],
  ['Зони тривог',[['cYellow','col','Жовтий рівень'],['cRed','col','Червоний рівень'],['cArt','col','Артобстріл'],['zop','range','Насиченість, %',30,100],['raionB','tog','Межі районів']]],
  ['Підписи',[['cityLbl','tog','Міста й села'],['oblLbl','tog','Назви областей'],['fscale','range','Розмір шрифту, %',70,150],['stats','tog','Лічильники зверху'],['legend','tog','Легенда']]],

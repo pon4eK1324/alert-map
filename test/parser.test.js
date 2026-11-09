@@ -177,3 +177,61 @@ test('пост харківського каналу про Київський �
   assert.ok(Math.abs(all[0].pts[0][0] - 49.99) < 0.05 && Math.abs(all[0].pts[0][1] - 36.23) < 0.05);
   t.threats.clear();
 });
+
+// ---- Звідки летить і рух цілі ----
+test('originOf: «з Брянщини», «з боку Білорусі», стрілка; без «з» — не місце запуску', () => {
+  assert.strictEqual(t.originOf('Шахед з Брянщини на Сумщину').n, 'Брянщини');
+  assert.strictEqual(t.originOf('3х БпЛА з боку Білорусі на Київ').n, 'Білорусі');
+  assert.strictEqual(t.originOf('Ракети з акваторії Чорного моря курсом на Одесу').n, 'Чорного моря');
+  assert.strictEqual(t.originOf('Курщина → Суми, БпЛА').n, 'Курщини');
+  assert.strictEqual(t.originOf('🛸 Шахед біля Конотопа'), undefined);
+  assert.strictEqual(t.originOf('Шахед на Курськ'), undefined, 'пункт призначення — не місце запуску');
+});
+
+test('entryPoint: відрізок з Брянщини до Сум заходить в Україну на кордоні', () => {
+  const en = t.entryPoint([52.9, 33.4], [51.1, 34.1]);
+  assert.ok(en && t.inUA(en[0], en[1]), 'точка входу всередині України');
+  assert.ok(en[0] < 52.5 && en[0] > 51.1, 'десь біля кордону, а не в центрі області: ' + en);
+  assert.ok(t.inUA(50.45, 30.52) && !t.inUA(55.75, 37.6), 'Київ — Україна, Москва — ні');
+});
+
+test('«з Брянщини на Сумщину» без відомої позиції ставить ціль на кордоні з треком і місцем запуску', async () => {
+  t.threats.clear();
+  await feed('org_a', [[1, '🛸 Шахед з Брянщини на Сумщину']]);
+  const all = [...t.threats.values()];
+  assert.strictEqual(all.length, 1);
+  const x = all[0];
+  assert.strictEqual(x.org.n, 'Брянщини'); assert.strictEqual(x.org.x, true);
+  assert.strictEqual(x.ent, true); assert.strictEqual(x.trk.length, 1);
+  assert.ok(x.dst && Math.abs(x.dst[0] - x.pts[1][0]) < 1e-9);
+});
+
+test('справжня позиція після оцінки на кордоні оновлює ту саму ціль, а не дублює', async () => {
+  t.threats.clear();
+  await feed('org_b', [[6, '🛸 Шахед з Брянщини на Сумщину']]);
+  await feed('org_c', [[1, '🛸 Шахед біля Глухова']]);
+  const all = [...t.threats.values()];
+  assert.strictEqual(all.length, 1, 'одна ціль');
+  assert.strictEqual(all[0].ent, false);
+  assert.ok(all[0].org && all[0].org.n === 'Брянщини');
+  assert.ok(Math.abs(all[0].trk[all[0].trk.length - 1][1] - 51.68) < 0.15, 'остання позиція — Глухів');
+});
+
+test('нові позиції однієї цілі дописуються в трек (з них клієнт рахує напрямок і рух)', () => {
+  t.threats.clear();
+  const now = Date.now(), mk = (id, ago, p) => ({ id, post: 'trk/' + id, type: 'shahed', t: now - ago * 60e3, pts: [p], text: 'x', ch: 'trk', dest: false, reg: false });
+  t.addThreat(mk('a#0', 3, [50.30, 30.90]));
+  t.addThreat(mk('b#0', 1, [50.38, 30.82]));
+  const all = [...t.threats.values()];
+  assert.strictEqual(all.length, 1);
+  assert.strictEqual(all[0].trk.length, 2);
+  assert.ok(all[0].trk[0][0] < all[0].trk[1][0]);
+  assert.ok(all[0].org, 'для шахеда поблизу кордону — ймовірний напрямок');
+});
+
+test('вибух не отримує місця запуску', async () => {
+  t.threats.clear();
+  await feed('org_d', [[1, 'Вибухи у Харкові']]);
+  const x = [...t.threats.values()][0];
+  assert.ok(x && !x.org);
+});

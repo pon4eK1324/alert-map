@@ -235,3 +235,11 @@ test('вибух не отримує місця запуску', async () => {
   const x = [...t.threats.values()][0];
   assert.ok(x && !x.org);
 });
+
+test('«Ймовірно, це була ракета Герань-5. Момент прольоту над Полтавою» — розбір минулої події, не жива ціль; Герань-5 — реактивний', async () => {
+  t.threats.clear();
+  await feed('past_a', [[1, '☀️Ймовірно, це була ракета Герань-5. Момент прольоту цілі над Полтавою.']]);
+  assert.strictEqual(t.threats.size, 0);
+  assert.strictEqual(t.kind('Ракета Герань-5 курсом на Київ'), 'jet');
+  assert.strictEqual(t.kind('Ракета на Київ'), 'missile');
+});

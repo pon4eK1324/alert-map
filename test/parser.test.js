@@ -243,3 +243,46 @@ test('«Ймовірно, це була ракета Герань-5. Момен�
   assert.strictEqual(t.kind('Ракета Герань-5 курсом на Київ'), 'jet');
   assert.strictEqual(t.kind('Ракета на Київ'), 'missile');
 });
+
+// ---- Точніше розміщення відносно населеного пункту ----
+test('«на північній околиці X», «північніше X», «за N км на північ від X» зсувають точку в бік, а не ставлять у центр', () => {
+  const [c] = t.placesRaw('Шахед біля Харкова'), [o] = t.placesRaw('Шахед на північній околиці Харкова');
+  assert.ok(o[0] > c[0] + 0.04 && o[0] < c[0] + 0.15 && Math.abs(o[1] - c[1]) < 0.02, 'околиця: трохи північніше центру');
+  const [pc] = t.placesRaw('БпЛА над Полтавою'), [pn] = t.placesRaw('БпЛА північніше Полтави'), [pk] = t.placesRaw('БпЛА за 10 км на північ від Полтави');
+  assert.ok(pn[0] > pc[0] + 0.1 && pn[0] < pc[0] + 0.25, 'північніше');
+  assert.ok(Math.abs(pk[0] - pc[0] - 10 / 111) < 0.01, '10 км ≈ 0,09°');
+  const [ps] = t.placesRaw('БпЛА на півдні Полтави'); assert.ok(ps[0] < pc[0] - 0.02, 'південь міста');
+  const [pd] = t.placesRaw('у південно-східній частині Харкова'); assert.ok(pd[0] < c[0] && pd[1] > c[1], 'діагональ');
+});
+
+test('напрям діє і для малих сіл із газетира (без слів «біля/над»)', () => {
+  const [a] = t.placesRaw('БпЛА над Решетилівкою'), [b] = t.placesRaw('БпЛА північніше Решетилівки');
+  assert.ok(b[0] > a[0] + 0.1 && Math.abs(b[1] - a[1]) < 0.02);
+});
+
+test('«між X та Y» — одна точка посередині', () => {
+  const r = t.placesRaw('БпЛА між Решетилівкою та Полтавою');
+  assert.strictEqual(r.length, 1);
+  assert.ok(Math.abs(r[0][0] - (49.5531 + 49.59) / 2) < 0.02);
+  assert.strictEqual(t.placesRaw('БпЛА Решетилівка, Полтава').length, 2, 'без «між» — як раніше');
+});
+
+test('«курсом на X» біля кордону: ціль ставиться на кордоні з боку пуску (оцінка), далеко від кордону — не малюється', () => {
+  t.threats.clear(); t.orphans.clear();
+  const now = Date.now(), mk = (id, p, text) => ({ id, post: 'inf/' + id, type: 'shahed', t: now, pts: [p], text, ch: 'inf', dest: true });
+  t.addThreat(mk('s', [51.5, 31.3], 'БпЛА курсом на Чернігів'));
+  const x = [...t.threats.values()][0];
+  assert.ok(x && x.ent === true && x.org && x.org.x === false, 'оцінена позиція, місце запуску — здогад');
+  t.addThreat(mk('p', [49.59, 34.55], 'БпЛА курсом на Полтаву'));
+  assert.strictEqual(t.threats.size, 1, 'Полтава далеко від кордону — не малюємо');
+  assert.ok(t.noCourse() >= 1);
+  t.threats.clear(); t.orphans.clear();
+});
+
+test('seen очищається за часом, а не росте безкінечно', () => {
+  t.seenAt.clear();
+  t.seenAt.set('old#1', Date.now() - 73 * 3600e3); t.seenAt.set('new#1', Date.now() - 3600e3);
+  t.pruneSeen();
+  assert.ok(!t.seenAt.has('old#1') && t.seenAt.has('new#1'));
+  t.seenAt.clear();
+});

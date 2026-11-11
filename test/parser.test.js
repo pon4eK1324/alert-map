@@ -286,3 +286,18 @@ test('seen очищається за часом, а не росте безкін
   assert.ok(!t.seenAt.has('old#1') && t.seenAt.has('new#1'));
   t.seenAt.clear();
 });
+
+test('голі рядки «→Місце» не успадковують «реактивний» ланцюжком з одного допису', async () => {
+  t.threats.clear(); for (const k of Object.keys(t.lastK)) delete t.lastK[k];
+  await feed('snow', [[19, '🏍 Реактивний БпЛА біля Борзни'], [16, '→Липова Долина/Полтавщина.'], [13, '→Шаргород/Хмельниччина.'], [10, '→Пирятин/Черкащина.'], [7, '→Яготин/Переяслав.'], [4, '→Харків.']]);
+  const all = [...t.threats.values()];
+  assert.ok(all.every(x => !/Харків|Яготин|Пирятин|Шаргород/.test(x.text)), 'пізні голі рядки (старше 4 хв від явного допису) не стають реактивними');
+  assert.ok(all.filter(x => x.type === 'jet').length <= 2);
+});
+
+test('голий рядок біля живої цілі бере її тип (шахед лишається шахедом)', async () => {
+  t.threats.clear(); for (const k of Object.keys(t.lastK)) delete t.lastK[k];
+  await feed('near_a', [[6, '🛸 Шахед біля Решетилівки']]);
+  await feed('near_b', [[1, '→Полтава.']]);
+  assert.ok([...t.threats.values()].every(x => x.type === 'shahed'));
+});

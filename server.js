@@ -1,5 +1,5 @@
 // AlertMap server: збирає тривоги + повітряні цілі, пише історію для таймлапсу, віддає сайт.
-const http = require('http'), fs = require('fs'), path = require('path');
+const http = require('http'), fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { PLACES } = require('./places');
 // Публічні Telegram-канали (t.me/s/...). Можна змінити у config.json: { "channels": ["kpszsu", "..."] } або змінною TG_CHANNELS.
 // При старті недійсні канали (немає публічного перегляду) автоматично вилучаються з опитування.
@@ -102,6 +102,36 @@ const GAZ_STOP = new Set([
   'тактична', 'гучний', 'хлопок', 'детонація', 'приліт', 'влучання'
 ].map(stemOf));
 
+
+// ---- Уточнення позиції відносно населеного пункту: «на північній околиці Сум», «північніше Полтави», «за 10 км на південь від Лубен» ----
+// Повертає { dy, dx, near, km } або null. near — біля самого пункту (околиця, його частина), інакше — зсув на кілька км/десятків км.
+const DWORD = '(?:півн|півд|сх[іо]д|зах[іо]д)[а-яіїєґ\'’.-]*', PTAIL = '(?: від)? ?(?:(?:міста|місто|села|село|селища|селище) ?)?$';
+const DIR_PATS = [
+  [new RegExp('(\\d{1,3}) ?км\\.? ?(?:на |від )?(' + DWORD + ')' + PTAIL), 'km'],
+  [new RegExp('(' + DWORD + ') (?:околиц|окраїн|частин|сторін|сторон|бік|боку|межі|межах|район)[а-яіїєґ]* ?(?:(?:міста|місто|села|село|селища|селище) ?)?$'), 'near'],
+  [new RegExp('((?:півн|півд|сх[іо]д|зах[іо]д)[а-яіїєґ]*ше)' + PTAIL), 'mid'],
+  [new RegExp('(?:^|[ (,;:])(?:на|в|у|з|із|зі) (' + DWORD + ')(?<vid> від)? ?(?:(?:міста|місто|села|село|селища|селище) ?)?$'), 'loc']
+];
+function dirCtx(before) {
+  const b = String(before).toLowerCase().replace(/\s+/g, ' ');
+  for (const [re, mode] of DIR_PATS) {
+    const m = re.exec(b); if (!m) continue;
+    const d = mode === 'km' ? m[2] : m[1];
+    const dy = (/півн/.test(d) ? 1 : 0) - (/півд/.test(d) ? 1 : 0), dx = (/сх[іо]д/.test(d) ? 1 : 0) - (/зах[іо]д/.test(d) ? 1 : 0);
+    if (!dy && !dx) continue;
+    if (mode === 'km') return { dy, dx, km: +m[1] };
+    return { dy, dx, near: mode === 'near' || (mode === 'loc' && !(m.groups && m.groups.vid)) };
+  }
+  return null;
+}
+// Зсув у градусах [Δширота, Δдовгота] від пункту розміром size (1 — велике місто … 3 — село) за контекстом c.
+function dirOffset(c, size, la) {
+  if (!c) return [0, 0];
+  const mag = c.km ? Math.min(c.km, 80) / 111 : c.near ? ({ 1: 0.09, 2: 0.06 }[size] || 0.035) : 0.15, n = Math.hypot(c.dy, c.dx) || 1;
+  return [c.dy / n * mag, c.dx / n * mag / Math.cos(la * Math.PI / 180)];
+}
+const sizeOfPop = pop => pop >= 500 ? 1 : pop >= 100 ? 2 : 3;
+
 const CUE = /(?:[:：—–]|(?<![а-яіїєґ])(?:бпла|шахед\S*|дрон\S*|ракет\S*|ціл[іьи]\S*)|(?<![а-яіїєґ'’])(?:на|до|повз|біля|через|над|від|курс\S*|напрямк\S*|район\S*|р-н\S*|в|у|з|із)|→|➡)\s*(?:\S{1,12}\s+)?$/i;
 function gazPlaces(line, covered, anchors, hint) {
   const hints = !hint ? [] : Array.isArray(hint[0]) ? hint : [[hint[0], hint[1], 3]]; // [[la, lo, макс. відстань у °], …] за пріоритетом
@@ -121,7 +151,8 @@ function gazPlaces(line, covered, anchors, hint) {
     if (!hit) { prevOk = false; continue; }
     const before = line.slice(Math.max(0, idx - 30), idx);
     const listed = prevOk && /[,/]\s*$|\sі\s$/.test(before);
-    if (!CUE.test(before) && !listed) { prevOk = false; continue; }
+    const dc = dirCtx(line.slice(Math.max(0, idx - 46), idx));
+    if (!CUE.test(before) && !listed && !dc) { prevOk = false; continue; }
     let pick = null;
     if (hit.length === 1) pick = hit[0];
     else {
@@ -134,7 +165,7 @@ function gazPlaces(line, covered, anchors, hint) {
       }
       if (!pick && cs[0].pop >= 1.8 * (cs[1].pop || 0.01) && cs[0].pop >= 1) pick = cs[0];
     }
-    if (pick) { out.push([idx, pick.la, pick.lo, false]); anchor = [pick.la, pick.lo]; prevOk = true; covered.push([idx, idx + used + 1]); } else prevOk = false;
+    if (pick) { const [dl, dn] = dirOffset(dc, sizeOfPop(pick.pop), pick.la); out.push([idx, pick.la + dl, pick.lo + dn, false]); anchor = [pick.la, pick.lo]; prevOk = true; covered.push([idx, idx + used + 1]); } else prevOk = false;
   }
   return out;
 }
@@ -169,7 +200,7 @@ function placesRaw(line, hint) {
   }
   for (const p of PLACES) {
     const m = p.re.exec(line);
-    if (m && !regs.some(([a, b]) => m.index >= a && m.index < b)) { f.push([m.index, p.la, p.lo, false]); covered.push([m.index, m.index + m[0].length + 2]); }
+    if (m && !regs.some(([a, b]) => m.index >= a && m.index < b)) { const [dl, dn] = dirOffset(dirCtx(line.slice(Math.max(0, m.index - 46), m.index)), p.r || 3, p.la); f.push([m.index, p.la + dl, p.lo + dn, false]); covered.push([m.index, m.index + m[0].length + 2]); }
   }
   for (const [re, la, lo] of RAION_P) {
     const m = re.exec(line);
@@ -180,6 +211,13 @@ function placesRaw(line, hint) {
   for (const [ix, la, lo, reg, g] of f.sort((a, b) => a[0] - b[0])) {
     const last = out[out.length - 1];
     if (!last || Math.hypot(last[0] - la, last[1] - lo) > 0.12) out.push([+la.toFixed(4), +lo.toFixed(4), reg, ix, g]);
+  }
+  // «між Лубнами та Гадячем» — це одна точка посередині, а не маршрут з одного в інше
+  for (let i = out.length - 2; i >= 0; i--) {
+    const a = out[i], b = out[i + 1];
+    if (a[2] || b[2] || dist(a, b) > 1.2) continue;
+    if (/(?<![а-яіїєґ])між\s+(?:[а-яіїєґ'’-]+\s+)?$/i.test(line.slice(Math.max(0, a[3] - 30), a[3])) && /(?:^|\s)(?:та|і|й)\s+(?:[а-яіїєґ'’-]+\s+)?$/i.test(line.slice(Math.max(0, b[3] - 20), b[3])))
+      out.splice(i, 2, [+((a[0] + b[0]) / 2).toFixed(4), +((a[1] + b[1]) / 2).toFixed(4), false, a[3]]);
   }
   // «ЧЗВ/Житомирщина», «Бровари, Київщина»: область після місця через «/» чи «,» лише уточнює його (якщо місце справді в тій області),
   // а не є пунктом призначення — інакше значок їде в геометричний центр області.
@@ -307,7 +345,7 @@ async function pollAlerts() {
 }
 
 const KYV = [50.45, 30.52], ODS = [46.48, 30.72], KHR = [49.99, 36.23];
-const CH_HINT = { truexakyiv: KYV, kievinfo_kyiv: KYV, monitoring_kiev: KYV, operativniy_monitor: KYV, VA_Kyiv: KYV, kyivoperativ: KYV, realkiev: KYV, truexazhitomir: [50.25, 28.66], truexadnepr: [48.46, 35.05],
+const CH_HINT = { truexakyiv: KYV, kievinfo_kyiv: KYV, monitoring_kiev: KYV, operativniy_monitor: KYV, VA_Kyiv: KYV, kyivoperativ: KYV, truexazhitomir: [50.25, 28.66], truexadnepr: [48.46, 35.05],
   truexakharkiv: KHR, synegubov: KHR, truexapoltava: [49.59, 34.55], truexazaporozie: [47.84, 35.14], truexakhersonua: [46.64, 32.62], odesatruexa: ODS, odessa_infonews: ODS, lvivtruexa: [49.84, 24.03], chernigivtruexa: [51.5, 31.3],
   kievrealnoy: KYV, kyiv_operativ: KYV, radar_kyiv: KYV, kievobl: KYV, kharkiv_radar: KHR, live_kharkov: KHR, dnipro_radar: [48.46, 35.05], zaporozhye_radar: [47.84, 35.14],
   odesa_radar: ODS, mykolaiv_radar: [46.97, 32.0], kherson_radar: [46.64, 32.62], vinnytsia_radar: [49.23, 28.47], khmelnitsky_radar: [49.42, 26.99], lviv_radar: [49.84, 24.03], poltava_radar: [49.59, 34.55], cherkasy_radar: [49.44, 32.06] };
@@ -322,7 +360,10 @@ const hintsFor = (ch, t) => {
   return h;
 };
 const BULLET = /^[\s▪️•🔹🔸🔻🔺➡️→▶️\-–—*·]+/u;
-const seen = new Set();
+// «Бачені» ключі постів із часом додавання: save() прибирає старі (>72 год), щоб пам'ять не росла безкінечно.
+const seenAt = new Map(), SEEN_KEEP = 72 * 3600e3;
+const seen = { has: k => seenAt.has(k), add: k => { seenAt.set(k, Date.now()); return seen; } };
+const pruneSeen = (now = Date.now()) => { for (const [k, t] of seenAt) if (t < now - SEEN_KEEP) seenAt.delete(k); };
 const SPEED = { shahed: 0.03, jet: 0.06, missile: 0.12, ballistic: 0.4 }, REACH0 = 0.35;
 
 // ---- Звідки летить ціль: «з Брянщини», «з боку Білорусі», «з акваторії Чорного моря» ----
@@ -446,6 +487,14 @@ function addThreat(o) {
       const en = entryPoint(o.org.p, o.pts[0]);
       if (en && dist(en, o.pts[0]) > 0.15) {
         Object.assign(o, { pts: [en, o.pts[0]], dst: o.pts[0], dest: false, reg: false, ent: true, trk: [[o.t, en[0], en[1]]], src: [src], t0: o.t });
+        recount(o); threats.set(o.id, o); return;
+      }
+    }
+    // «курсом на Суми» без позиції й без «звідки»: найближче відоме місце запуску + кордон; лише якщо ціль не могла відлетіти далеко (≤ ~130 км від кордону)
+    if ((o.type === 'shahed' || o.type === 'jet') && !o.reg && !(o.org && o.org.x)) {
+      const g = inferOrigin(o.pts[0]), en = g && entryPoint(g.p, o.pts[0]), d = en && dist(en, o.pts[0]);
+      if (en && d > 0.15 && d <= 1.2) {
+        Object.assign(o, { org: { n: (o.org && o.org.n) || g.n, p: g.p, x: false }, pts: [en, o.pts[0]], dst: o.pts[0], dest: false, reg: false, ent: true, trk: [[o.t, en[0], en[1]]], src: [src], t0: o.t });
         recount(o); threats.set(o.id, o); return;
       }
     }
@@ -580,6 +629,7 @@ function save() {
   const cut = Date.now() - KEEP;
   for (const [k, v] of threats) if (v.t < cut) threats.delete(k);
   ballWarn = ballWarn.filter(w => w.t >= cut);
+  pruneSeen();
   while (snaps.length > 1 && snaps[1].t < cut) snaps.shift();
   try {
     fs.mkdirSync(DATA, { recursive: true });
@@ -635,9 +685,32 @@ const isLocal = req => /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socke
 function readBody(req, cb) { let b = ''; req.on('data', c => { b += c; if (b.length > 20000) req.destroy(); }); req.on('end', () => { try { cb(JSON.parse(b || '{}')); } catch (e) { cb(null); } }); }
 
 const MIME = { '.ico': 'image/x-icon', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml; charset=utf-8' };
+const PUB = path.join(__dirname, 'public'), ZIPPABLE = new Set(['.html', '.js', '.json', '.css', '.svg', '.txt', '.xml']), fileCache = new Map();
+// Статика: ETag (304), gzip для великих текстових файлів (settlements.json ≈ 1,2 МБ), index/sw/manifest — завжди з перевіркою.
+function sendFile(req, res, f, gz) {
+  fs.stat(f, (e, st) => {
+    if (e || !st.isFile()) { res.writeHead(404); return res.end('Not found'); }
+    const ext = path.extname(f), etag = '"' + st.size.toString(36) + '-' + Math.round(st.mtimeMs).toString(36) + '"';
+    const h = { 'Content-Type': MIME[ext] || 'application/octet-stream', ETag: etag, Vary: 'Accept-Encoding', 'Cache-Control': /(?:^|[\\/])(?:index\.html|sw\.js|manifest\.json)$/.test(f) ? 'no-cache' : 'public, max-age=3600' };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, h); return res.end(); }
+    const send = c => { const z = gz && c.gz; res.writeHead(200, z ? { ...h, 'Content-Encoding': 'gzip' } : h); res.end(z ? c.gz : c.raw); };
+    const c = fileCache.get(f);
+    if (c && c.etag === etag) return send(c);
+    fs.readFile(f, (err, raw) => {
+      if (err) { res.writeHead(404); return res.end('Not found'); }
+      const n = { etag, raw, gz: ZIPPABLE.has(ext) && raw.length > 1024 ? zlib.gzipSync(raw) : null };
+      fileCache.set(f, n); send(n);
+    });
+  });
+}
 const srv = http.createServer((req, res) => {
   let u; try { u = new URL(req.url.replace(/^\/+/, '/'), 'http://x'); } catch (e) { res.writeHead(400); return res.end('Bad request'); }
-  const json = o => { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(JSON.stringify(o)); };
+  const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+  const json = o => {
+    const b = Buffer.from(JSON.stringify(o)), h = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store', Vary: 'Accept-Encoding' };
+    if (gz && b.length > 1024) return zlib.gzip(b, (e, z) => { if (e) { res.writeHead(200, h); return res.end(b); } res.writeHead(200, { ...h, 'Content-Encoding': 'gzip' }); res.end(z); });
+    res.writeHead(200, h); res.end(b);
+  };
   if (u.pathname === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); return res.end('ok'); }
   if (u.pathname === '/api/state') { const hl = health(), ref = refTime(hl); return json({ now: Date.now(), ref, stale: hl.stale, lastGood, alerts, threats: recent(35 * 60e3, ref), ball: ballRecent(BALL_TTL * 2, ref), ballTtl: BALL_TTL, source, ttl: TTL, noCourse: noCourse(ref), diag: diag() }); }
   if (u.pathname === '/api/cities') return json(CITIES);
@@ -658,8 +731,9 @@ const srv = http.createServer((req, res) => {
     if (before) s.unshift({ t: from, a: before.a });
     return json({ now: Date.now(), from, snaps: s, threats: recent(ms), ball: ballRecent(ms), ballTtl: BALL_TTL, source, ttl: TTL });
   }
-  const f = path.join(__dirname, 'public', u.pathname === '/' ? 'index.html' : path.normalize(u.pathname).replace(/^(\.\.[\/\\])+/, ''));
-  fs.readFile(f, (e, d) => e ? (res.writeHead(404), res.end('Not found')) : (res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' }), res.end(d)));
+  const f = path.join(PUB, u.pathname === '/' ? 'index.html' : path.normalize(u.pathname).replace(/^(\.\.[\/\\])+/, ''));
+  if (!f.startsWith(PUB + path.sep)) { res.writeHead(404); return res.end('Not found'); }
+  sendFile(req, res, f, gz);
 });
 
 exports.setFetch = f => { F = f; };
@@ -712,5 +786,5 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
-exports._t = { originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
+exports._t = { dirCtx, dirOffset, seenAt, pruneSeen, originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
 if (require.main === module) exports.start();

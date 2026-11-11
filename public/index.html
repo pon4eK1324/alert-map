@@ -356,7 +356,7 @@ const icon=(h,b,fresh,cn)=>{const z=isz(),pl=(S.pulse||h.type==='boom')&&fresh;r
 $('lgi').innerHTML=[['shahed','шахед'],['jet','реактивний'],['boom','вибухи'],['missile','ракета'],['ballistic','балістика']].map(([k,t])=>`<span class="ico ${k}" style="--isz:22px;flex:0 0 22px"><svg viewBox="0 0 24 24">${SVG[k]}</svg></span><span style="margin-right:10px">${t}</span>`).join('');
 $('lgi').style.alignItems='center';$('lgi').style.flexWrap='wrap';
 
-const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 /* Вікно цілі: список джерел (канал, час, текст, посилання на пост у Telegram) */
 const originLine=h=>h.org&&h.type!=='boom'?`<div style="font-size:12px;margin-top:4px">${h.org.x?'Летить з':'Ймовірно з'}: <b>${esc(h.org.n)}</b></div>`:'';
 function popup(h){

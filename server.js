@@ -17,7 +17,7 @@ const cleanCh = c => String(c).trim().replace(/^.*t\.me\/(s\/)?/, '').replace(/^
 DEFAULT_CHANNELS.splice(0, DEFAULT_CHANNELS.length, ...DEFAULT_CHANNELS.filter((c, i, a) => a.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i));
 let CHANNELS = (process.env.TG_CHANNELS ? process.env.TG_CHANNELS.split(',') : DEFAULT_CHANNELS).map(cleanCh).filter(Boolean);
 const KEEP = 48 * 3600e3;
-const TTL = 10 * 60e3; // ціль зникає з мапи, якщо про неї 10 хвилин нічого не пишуть
+let TTL = 10 * 60e3; // ціль зникає з мапи, якщо про неї 10 хвилин нічого не пишуть
 const FADE_TIME = 60e3; // остання хвилина до кінця TTL: ціль плавно стає прозорою
 let DATA = path.join(__dirname, 'data'), TOKEN = process.env.ALERTS_TOKEN || '';
 let alerts = [], ballWarn = [], source = 'очікування', snaps = [], threats = new Map(), geoErr = '';
@@ -350,6 +350,21 @@ const CH_HINT = { truexakyiv: KYV, kievinfo_kyiv: KYV, monitoring_kiev: KYV, ope
   kievrealnoy: KYV, kyiv_operativ: KYV, radar_kyiv: KYV, kievobl: KYV, kharkiv_radar: KHR, live_kharkov: KHR, dnipro_radar: [48.46, 35.05], zaporozhye_radar: [47.84, 35.14],
   odesa_radar: ODS, mykolaiv_radar: [46.97, 32.0], kherson_radar: [46.64, 32.62], vinnytsia_radar: [49.23, 28.47], khmelnitsky_radar: [49.42, 26.99], lviv_radar: [49.84, 24.03], poltava_radar: [49.59, 34.55], cherkasy_radar: [49.44, 32.06] };
 const lastK = {};
+// Голий рядок («→Пирятин», «курсом на X») не містить типу цілі. Беремо тип у найближчої живої цілі, яка могла долетіти до цього місця за час,
+// що минув; якщо такої немає — з останнього ЯВНОГО допису цього каналу, але не старшого за 4 хв. Інакше тип невідомий, і рядок не малюється.
+const INHERIT_WIN = 4 * 60e3;
+function inheritKind(ch, t, pts) {
+  let best = null, bd = Infinity;
+  for (const x of threats.values()) {
+    if (x.dead || x.type === 'boom' || x.t > t || t - x.t > TTL) continue;
+    const reach = REACH0 + (SPEED[x.type] || SPEED.shahed) * (t - x.t) / 60e3;
+    const d = Math.min(...x.pts.map(q => dist(q, pts[0])));
+    if (d <= reach && d < bd) { bd = d; best = x; }
+  }
+  if (best) return best.type;
+  const L = lastK[ch];
+  return L && t >= L.t && t - L.t <= INHERIT_WIN ? L.k : undefined;
+}
 // Остання відома позиція цілі в кожному каналі: двозначні назви («Ямпіль») спершу тягнемо до місця, про яке цей канал писав хвилини тому,
 // і лише потім — до статичної підказки каналу (на кшталт «Київ» для київських каналів).
 const lastPos = {};
@@ -564,6 +579,7 @@ async function pollTG(ch) {
       text.split('\n').forEach((line, i) => {
         let k = kind(line);
         if (k) carry = k; else if (BULLET.test(line) && carry && line.trim().length < 220) k = carry; else if (line.trim() && !BULLET.test(line)) carry = null;
+        const explicit = !!k; // тип названо в самому рядку (або в заголовку списку цього ж допису)
         const key = id + '#' + i;
 
         if (NIGHT.test(line) || NOISE.test(line) || FALSE_ALARM.test(line)) return;
@@ -588,8 +604,7 @@ async function pollTG(ch) {
         for (let i = raw.length - 1; i > 0 && raw.length > 1; i--) if (raw[i][2] && line[raw[i][3] - 1] === '(' && raw.some((q, j) => j !== i && !q[2])) raw.splice(i, 1);
         const pts = raw.map(p => [p[0], p[1]]);
         if (!pts.length || seen.has(key)) return;
-        const L = lastK[ch] || lastK['*'];
-        if (!k && L && tms >= L.t && tms - L.t <= TTL && /курс|далі|напрямк|→|➡|прямує|рухаєт|рухаютьс/i.test(line) && !/тривог|відбій/i.test(line)) k = L.k;
+        if (!k && /курс|далі|напрямк|→|➡|прямує|рухаєт|рухаютьс/i.test(line) && !/тривог|відбій/i.test(line)) k = inheritKind(ch, tms, pts);
         if (!k) return;
         seen.add(key);
         if (k === 'boom') {
@@ -604,8 +619,10 @@ async function pollTG(ch) {
           o.dead = tms; 
         }
 
-        if (!lastK[ch] || tms >= lastK[ch].t) lastK[ch] = { k, t: tms };
-        if (!lastK['*'] || tms >= lastK['*'].t) lastK['*'] = { k, t: tms };
+        if (explicit) { // успадкований тип не оновлює «останній відомий»: інакше один «реактивний» допис робить реактивними всі наступні голі рядки «→Місце»
+          if (!lastK[ch] || tms >= lastK[ch].t) lastK[ch] = { k, t: tms };
+          if (!lastK['*'] || tms >= lastK['*'].t) lastK['*'] = { k, t: tms };
+        }
         
         if (!o.dead && !o.reg && o.pts.length) { const lp = lastPos[ch]; if (!lp || tms >= lp.t) lastPos[ch] = { t: tms, p: o.pts[o.pts.length - 1] }; }
         addThreat(o); 
@@ -745,6 +762,7 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
       if (!TOKEN && c.alertsToken && !/^ВАШ_/.test(c.alertsToken)) TOKEN = c.alertsToken;
       if (Array.isArray(c.channels) && c.channels.length && !process.env.TG_CHANNELS) CHANNELS = c.channels.map(cleanCh).filter(Boolean);
       if (+c.pollSeconds >= 15 && +c.pollSeconds <= 300) POLL_EVERY = +c.pollSeconds * 1000;
+      if (+c.ttlMinutes >= 3 && +c.ttlMinutes <= 30) TTL = +c.ttlMinutes * 60e3;
     } catch (e) {}
   }
   try { const c = JSON.parse(fs.readFileSync(path.join(DATA, 'channels.json'))); if (!process.env.TG_CHANNELS && Array.isArray(c.channels) && uniq(c.channels).length) CHANNELS = uniq(c.channels); } catch (e) {}
@@ -786,5 +804,5 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
-exports._t = { dirCtx, dirOffset, seenAt, pruneSeen, originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
+exports._t = { inheritKind, lastK, dirCtx, dirOffset, seenAt, pruneSeen, originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
 if (require.main === module) exports.start();

@@ -536,7 +536,7 @@ function addThreat(o) {
       if (o.sd && !x.sd) { if (o.t > x.t) x.t = o.t; recount(x); return; } // оцінка «з півдня» не затирає вже відому позицію
       if (o.t >= x.t) {
         x.t = o.t;
-        if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; x.ent = false; if (!o.reg) obsPush(x, o.t, o.pts[0]); if (o.pts.length > 1) x.dst = lastP; }
+        if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; x.ent = false; if (!o.reg) obsPush(x, o.t, o.pts[0]); else if (o.pts.length > 1 && !(x.trk && x.trk.length)) x.trk = [[o.t, +o.pts[0][0].toFixed(4), +o.pts[0][1].toFixed(4)]]; if (o.pts.length > 1) x.dst = lastP; }
         else x.dst = o.pts[0];
         x.text = o.text; x.ch = o.ch;
       }
@@ -586,7 +586,7 @@ function addThreat(o) {
     x.text = o.text; x.ch = o.ch; recount(x); return;
   }
   o.src = [src]; o.t0 = o.t;
-  o.trk = o.reg ? [] : [[o.t, +o.pts[0][0].toFixed(4), +o.pts[0][1].toFixed(4)]];
+  o.trk = o.reg && o.pts.length < 2 ? [] : [[o.t, +o.pts[0][0].toFixed(4), +o.pts[0][1].toFixed(4)]]; // «Область: … курсом на X» теж має трек: значок їде від точки області до X
   if (o.pts.length > 1) o.dst = lastP;
   if (o.type === 'boom') delete o.org;
   else if (o.org && !o.org.p) { const g = inferOrigin(o.pts[0]); o.org = g ? { n: o.org.n, p: g.p, x: false } : undefined; }

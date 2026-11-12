@@ -7,6 +7,18 @@
 <meta name="keywords" content="карта тривог, повітряна тривога, мапа тривог україни, тривоги онлайн, alerts.in.ua" />
 <meta name="google-site-verification" content="J_pkVY15dwY4gYqYHQC6ummAFAZ2f3V4BCsXTcvyixM" />
 <meta property="og:site_name" content="AlertMap">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="uk_UA">
+<meta property="og:title" content="Мапа тривог України в реальному часі — AlertMap">
+<meta property="og:description" content="Повітряні тривоги, дрони, ракети й балістика на карті з таймлапсом. Безкоштовно, без реєстрації.">
+<meta property="og:url" content="https://alert-map-ect7.onrender.com/">
+<meta property="og:image" content="https://alert-map-ect7.onrender.com/og.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Мапа тривог України в реальному часі — AlertMap">
+<meta name="twitter:description" content="Повітряні тривоги, дрони, ракети й балістика на карті з таймлапсом.">
+<meta name="twitter:image" content="https://alert-map-ect7.onrender.com/og.png">
+<link rel="canonical" href="https://alert-map-ect7.onrender.com/">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebSite","name":"AlertMap","alternateName":["Мапа тривог України","alert-map-ect7.onrender.com"],"url":"https://alert-map-ect7.onrender.com/"}
 </script>
@@ -332,7 +344,7 @@ function styleFor(k,o,items){
 
 /* ---------- Налаштування (зберігаються в браузері одним об'єктом) ---------- */
 const DEF={theme:'dark',accent:'#4f8fe0',isz:36,iconBg:false,pulse:false,badge:true,trails:'off',regZone:false,
- tShahed:true,tMissile:true,tBallistic:true,onlyAlert:false,life:15,v:2,cShahed:'#f5b83d',cMissile:'#ff5d5d',cBallistic:'#c77dff',tJet:true,cJet:'#4fd8ff',tBoom:true,cBoom:'#ff7a1a',cred:true,ballMin:2,
+ tShahed:true,tMissile:true,tBallistic:true,onlyAlert:false,life:15,v:2,cShahed:'#f5b83d',cMissile:'#ff5d5d',cBallistic:'#c77dff',tJet:true,cJet:'#4fd8ff',tBoom:true,cBoom:'#ff7a1a',cred:true,ballMin:2,minCh:1,
  cYellow:'',cRed:'',cArt:'',zop:100,raionB:true,cityLbl:true,oblLbl:true,fscale:100,stats:true,legend:true,ballBanner:true,ballSound:false};
 let S={...DEF};
 try{const o=JSON.parse(localStorage.getItem('am_settings')||'null');
@@ -471,7 +483,7 @@ function render(){
   const zs=useZ?[...R.filter(r=>air.some(i=>i.k===r.k||i.k===r.o)).map(r=>r.z),...(kyivZ&&air.some(i=>i.k===KYIV)?[kyivZ]:[])]:null;
   for(const h of threats){
     const LF=h.type==='boom'?Math.min(LIFE,15*60e3):LIFE;
-    if(t1Of(h)>RT||RT-h.t>LF||(h.dead&&RT>=h.dead)||!S[TKEY[h.type]]||(h.type==='ballistic'&&!ballConf(h)))continue;
+    if(t1Of(h)>RT||RT-h.t>LF||(h.dead&&RT>=h.dead)||!S[TKEY[h.type]]||(h.type==='ballistic'&&!ballConf(h))||(h.type!=='ballistic'&&credN(h)<(S.minCh||1)))continue;
     const a=h.pts[0],z=h.pts[h.pts.length-1];
     if(zs&&h.type!=='boom'&&!nearZone(a[0],a[1],zs,h.reg?45:10))continue;
     vis.push(h);seen.add(h.id);
@@ -644,7 +656,7 @@ map.on('zoomend',fs);fs();
 const ACCS=['#4f8fe0','#2ec4b6','#a78bfa','#ff9f43','#ff6b9d','#9be564'];
 const UI=[['Тема',[['theme','seg',[['auto','Авто'],['light','☀ Світла'],['dark','☾ Темна']]],['accent','acc']]],
  ['Значки',[['isz','range','Розмір',20,64],['iconBg','tog','Круглий фон значка'],['pulse','tog','Пульсація нових'],['badge','tog','Лічильник групи (2×)'],['trails','seg',[['off','Без ліній'],['fast','Ракети'],['all','Усі']],'Лінії курсу'],['regZone','tog','Зона, якщо відома лише область']]],
- ['Цілі',[['tShahed','tog','Шахеди (гвинтові)'],['tJet','tog','Реактивні шахеди'],['tBoom','tog','Вибухи'],['ballMin','seg',[[1,'1'],[2,'2'],[3,'3']],'Балістика: мін. каналів для банера і значка'],['tMissile','tog','Ракети'],['tBallistic','tog','Балістика'],['onlyAlert','tog','Лише там, де є тривога'],['life','seg',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[30,'30 хв']],'Скільки лишається на мапі'],['cShahed','col','Колір шахеда'],['cJet','col','Колір реактивного'],['cBoom','col','Колір вибухів'],['cMissile','col','Колір ракети'],['cBallistic','col','Колір балістики']]],
+ ['Цілі',[['tShahed','tog','Шахеди (гвинтові)'],['tJet','tog','Реактивні шахеди'],['tBoom','tog','Вибухи'],['ballMin','seg',[[1,'1'],[2,'2'],[3,'3']],'Балістика: мін. каналів для банера і значка'],['minCh','seg',[[1,'Усі'],[2,'2+'],[3,'3+']],'Решта цілей: мін. незалежних каналів'],['tMissile','tog','Ракети'],['tBallistic','tog','Балістика'],['onlyAlert','tog','Лише там, де є тривога'],['life','seg',[[5,'5'],[10,'10'],[15,'15'],[20,'20'],[30,'30 хв']],'Скільки лишається на мапі'],['cShahed','col','Колір шахеда'],['cJet','col','Колір реактивного'],['cBoom','col','Колір вибухів'],['cMissile','col','Колір ракети'],['cBallistic','col','Колір балістики']]],
  ['Зони тривог',[['cYellow','col','Жовтий рівень'],['cRed','col','Червоний рівень'],['cArt','col','Артобстріл'],['zop','range','Насиченість, %',30,100],['raionB','tog','Межі районів']]],
  ['Підписи',[['cityLbl','tog','Міста й села'],['oblLbl','tog','Назви областей'],['fscale','range','Розмір шрифту, %',70,150],['stats','tog','Лічильники зверху'],['legend','tog','Легенда']]],
  ['Балістика',[['ballBanner','tog','Банер «балістична загроза»'],['ballSound','tog','Звуковий сигнал']]]];

@@ -47,6 +47,34 @@ function logErr(m) {
 }
 
 const RAION_P = [];
+// Підпис/значок «області чи району» ставимо у внутрішню точку, найвіддаленішу від кордону (грубий полюс недоступності),
+// а не в центроїд чи середину рамки: вони можуть лежати поза межами (Одещина, Ніжинський, Генічеський райони…).
+const inRingXY = (r, x, y) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) if ((r[i][1] > y) !== (r[j][1] > y) && x < (r[j][0] - r[i][0]) * (y - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; return c; };
+const ringArea = r => { let a = 0; for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; return Math.abs(a / 2); };
+function labelPoint(polys) { // polys: [[outer, ...holes], …] у координатах [lo, la]; повертає [lo, la]
+  let rings = null, ba = -1;
+  for (const p of polys) { const a = ringArea(p[0]); if (a > ba) { ba = a; rings = p; } }
+  if (!rings) return null;
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const [x, y] of rings[0]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const c = Math.cos((y0 + y1) / 2 * Math.PI / 180);
+  const inside = (x, y) => inRingXY(rings[0], x, y) && !rings.slice(1).some(h => inRingXY(h, x, y));
+  const edge = (x, y) => {
+    let m = Infinity;
+    for (const r of rings) for (let i = 0; i < r.length - 1; i++) {
+      const ax = r[i][0] * c, ay = r[i][1], bx = r[i + 1][0] * c, by = r[i + 1][1], dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+      let u = l ? ((x * c - ax) * dx + (y - ay) * dy) / l : 0; u = Math.max(0, Math.min(1, u));
+      m = Math.min(m, Math.hypot(x * c - ax - u * dx, y - ay - u * dy));
+    }
+    return m;
+  };
+  let best = null, bd = -1;
+  const scan = (a0, a1, b0, b1, n) => { for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) { const x = a0 + (a1 - a0) * i / n, y = b0 + (b1 - b0) * j / n; if (!inside(x, y)) continue; const d = edge(x, y); if (d > bd) { bd = d; best = [x, y]; } } };
+  scan(x0, x1, y0, y1, 36);
+  if (best) { const sx = (x1 - x0) / 18, sy = (y1 - y0) / 18; scan(best[0] - sx, best[0] + sx, best[1] - sy, best[1] + sy, 12); }
+  return best;
+}
+const polysOf = g => g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
 const LB = '(?<![а-яіїєґ\'’])';
 const REGIONS = [['вінницьк', 'Вінниччин'], ['волинськ', "Волинщин|Волин(?:ь|і|ю)(?![а-яіїєґ])"], ['дніпропетровськ', 'Дніпропетровщин|Дніпровщин'], ['донецьк', 'Донеччин'],
   ['житомирськ', 'Житомирщин'], ['закарпатськ', 'Закарпатт[а-яіїєґ]*'], ['запорізьк', 'Запоріжчин'], ['івано-франківськ', 'Прикарпатт[а-яіїєґ]*|Івано-Франківщин|Франківщин'],
@@ -68,7 +96,31 @@ function addGeo(o, geom) {
     a /= 2; if (!a) continue; const w = Math.abs(a); g.a += w; g.x += cx / (6 * a) * w; g.y += cy / (6 * a) * w;
   }
 }
-const regionGeo = stem => { for (const [k, g] of OBL_GEO) if (k.startsWith(stem) && g.a) return { la: g.y / g.a, lo: g.x / g.a, h: g.la1 - g.la0, w: g.lo1 - g.lo0, b: [g.la0, g.la1, g.lo0, g.lo1] }; };
+const regionGeo = stem => { for (const [k, g] of OBL_GEO) if (k.startsWith(stem) && g.a) return { la: g.pl ? g.pl[1] : g.y / g.a, lo: g.pl ? g.pl[0] : g.x / g.a, h: g.la1 - g.la0, w: g.lo1 - g.lo0, b: [g.la0, g.la1, g.lo0, g.lo1] }; };
+// «з півдня / зі сходу / з північного заходу» — з якого боку ціль підлітає до названого місця (не плутати з «з півдня Чернігівщини»).
+function sideOf(line) {
+  const m = /(?<![а-яіїєґ])(?:з|із|зі)\s+((?:північн|південн)[а-яіїєґ'’]*[\s-]*(?:схід|сход|захід|заход)[а-яіїєґ'’]*|півночі|півдня|сходу|заходу)(?![а-яіїєґ'’])/i.exec(line);
+  if (!m) return null;
+  const rest = line.slice(m.index + m[0].length);
+  if (/^\s+(?:[А-ЯІЇЄҐ]|(?:[а-яіїєґ'’-]+\s+)?(?:област|обл(?![а-яіїєґ])))/.test(rest)) return null;
+  const d = m[1].toLowerCase(), dy = (/півн|північ/.test(d) ? 1 : 0) - (/півд|південн/.test(d) ? 1 : 0), dx = (/сх[іо]д/.test(d) ? 1 : 0) - (/зах[іо]д/.test(d) ? 1 : 0);
+  return dy || dx ? { dy, dx } : null;
+}
+// Початок треку для цілі, що летить «на Київ з півдня»: ≈50 км від пункту у вказаний бік (а якщо там уже не Україна — ближче).
+function sideStart(p, s) {
+  const n = Math.hypot(s.dy, s.dx);
+  for (const mag of [0.45, 0.3, 0.15]) {
+    const q = [+(p[0] + s.dy / n * mag).toFixed(4), +(p[1] + s.dx / n * mag / Math.cos(p[0] * Math.PI / 180)).toFixed(4)];
+    if (!UA_POLYS.length || inUA(q[0], q[1])) return q;
+  }
+  return null;
+}
+// «з Київщини на Вінницький район»: область-джерело — не місце цілі. Ставимо її приблизно посередині між областю і точним пунктом призначення.
+function midOrigin(line, raw) {
+  if (raw.length < 2 || !raw[0][2] || !/(?:^|[\s(])(?:з|із|зі|від)\s*$/i.test(line.slice(Math.max(0, raw[0][3] - 8), raw[0][3]))) return;
+  const t = raw.find((p, i) => i > 0 && !p[2]); if (!t) return;
+  raw[0] = [+((raw[0][0] + t[0]) / 2).toFixed(4), +((raw[0][1] + t[1]) / 2).toFixed(4), false, raw[0][3]];
+}
 function dirShift(line, m, g) {
   const rest = line.slice(m.index + m[0].length), D = "(півн|півд|схід|захід)[а-яіїєґ'’-]*";
   const before = new RegExp(D + '\\s*(?:частин[а-яіїєґ]*\\s*)?$', 'i').exec(line.slice(Math.max(0, m.index - 24), m.index)),
@@ -174,6 +226,9 @@ function gazPlaces(line, covered, anchors, hint) {
 const OFFICIALS = /(?<![А-ЯІЇЄҐа-яіїєґ'’ʼ])(?:Терехов|Синєгубов|Кличко|Ткаченко|Федоров|Лисак|Філатов|Прокудін|Кім)[а-яіїєґ]{0,3}(?![А-ЯІЇЄҐа-яіїєґ'’ʼ])/g;
 // Райони міст. «Київський район» — це Харків, Одеса, Полтава…, але не Київ (у Києві такого району немає).
 // Назви, що є лише в Харкові, завжди Харків; назви, що є в кількох містах, — Харків лише в харківському контексті (підказка каналу або «Харків» у тексті).
+// Міста РФ/Білорусі. Газетир пошуку по основі слова збігає їх з українськими селами (Брянськ → Брянське в Криму, Курськ → Курське),
+// тому такі назви заміняємо пробілами ще до пошуку місць; як «звідки» їх далі розпізнає originOf.
+const FOREIGN = new RegExp("(?<![А-ЯІЇЄҐа-яіїєґ'’ʼ])(?:Брянськ|Брянск|Брянщин|Курськ|Курск|Курщин|Бєлгород|Белгород|Воронеж|Воронез|Ростов-на-Дону|Ростовськ|Краснодар|Єйськ|Таганрог|Новоросійськ|Мінськ|Гомел(?:ь|я|ю|і)(?![а-яіїєґ])|Липецьк|Тамбов|Саратов|Волгоград|Москв|Міллерово|Морозовськ|Шайківк|Шайковк|Приморсько-Ахтарськ|Орловськ|Смоленськ|Рязан|Ахтубінськ|Каспійськ)[а-яіїєґ'’ʼ-]*", 'gi');
 const KH_ONLY = /(?<![а-яіїєґ'’])(?:слобідськ|салтівськ|холодногірськ|новобаварськ|немишлянськ|основ['’ʼ]янськ)[а-яіїєґ]*\s+район/i;
 const KH_SHARED = /(?<![а-яіїєґ'’])(?:київськ|шевченківськ|індустріальн)[а-яіїєґ]*\s+район/i;
 const KYIV_RAION = /(?<![а-яіїєґ'’])київськ[а-яіїєґ]*\s+район/i;
@@ -186,7 +241,7 @@ const khrCtx = (line, hint) => {
 // Чи лежить місце q = [la, lo] у межах області g або поруч із нею (запас ~0,5° ≈ 40 км: «ЧЗВ/Житомирщина» — зона на межі областей).
 const inBox = (q, g) => q[0] >= g.b[0] - 0.5 && q[0] <= g.b[1] + 0.5 && q[1] >= g.b[2] - 0.5 && q[1] <= g.b[3] + 0.5;
 function placesRaw(line, hint) {
-  line = String(line).replace(/[ʼ`‘]/g, '’').replace(OFFICIALS, m => ' '.repeat(m.length));
+  line = String(line).replace(/[ʼ`‘]/g, '’').replace(OFFICIALS, m => ' '.repeat(m.length)).replace(FOREIGN, m => ' '.repeat(m.length));
   const f = [], covered = [], regs = [];
   const dm = KH_ONLY.exec(line) || (khrCtx(line, hint) && !OTHER_CITY.test(line) ? KH_SHARED.exec(line) : null) || KYIV_RAION.exec(line);
   if (dm) { // район міста: у харківському контексті — Харків, інакше точку не ставимо (і точно не Київ)
@@ -221,7 +276,11 @@ function placesRaw(line, hint) {
   }
   // «ЧЗВ/Житомирщина», «Бровари, Київщина»: область після місця через «/» чи «,» лише уточнює його (якщо місце справді в тій області),
   // а не є пунктом призначення — інакше значок їде в геометричний центр області.
-  return out.filter((p, i) => !(p[2] && p[4] && /[\/,]\s*$/.test(line.slice(Math.max(0, p[3] - 4), p[3])) && out.some((q, j) => j < i && !q[2] && inBox(q, p[4]))));
+  // Те саме у зворотному порядку: «на Вінниччину, Вінницький район» — область лише уточнюється районом, окремої цілі в центрі області немає.
+  return out.filter((p, i) => !(p[2] && p[4] && (
+    (/[\/,]\s*$/.test(line.slice(Math.max(0, p[3] - 4), p[3])) && out.some((q, j) => j < i && !q[2] && inBox(q, p[4])))
+    || out.some((q, j) => j > i && !q[2] && inBox(q, p[4]) && /^[а-яіїєґ'’-]*\s*[,(\/]\s*$/i.test(line.slice(p[3], q[3])))
+  )));
 }
 const places = line => placesRaw(line).map(p => [p[0], p[1]]);
 
@@ -236,9 +295,10 @@ function kind(l) {
   if (/шахед|шахеді|бпла|бпл(?![а-яіїєґ])|дрон|безпілот|герань|геран|гербер|мопед|молни[яі]|камікадзе|імітатор|shahed|geran|\buav\b|\bdrones?\b/i.test(l)) return 'shahed';
 }
 
-const NIGHT = /прольот|(?<![а-яіїєґ])це\s+(?:була|був|було|були)(?![а-яіїєґ])|(?:у|за|протягом)\s+ніч\S*|протягом ночі|вранці|зафіксовано влучання|місцях падіння|локаці[яй] влучан|(?<![а-яіїєґ])[ув]ночі|минул\S*\s+ноч|цієї\s+ночі|сьогодні\s+вночі|вчора|за\s+добу|упродовж\s+(?:ночі|доби)|завдал[аио]\s+(?:\S+\s+){0,2}?удар|завдав\s+(?:\S+\s+){0,2}?удар|завдан\S*\s+удар|(?:було|були)\s+(?:випущен|запущен|збит|знищен|завдан|пошкоджен)|випустил[аи]|запустил[аи]\s+по|наслідки|заявив|заявила|за\s+словами|[—–-]\s*зеленськ|зеленськ\S*\s+(?:заявив|повідомив)|дснс|(?:поранених|постраждалих|загиблих)\s+не\s+зафіксован\S*|спалахн\S*\s+(?:\S+\s+){0,2}?(?:автомобіл|авто|будинок|будівл|склад)|момент\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|(?:відео|кадри|фото|запис)\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|вирв(?:а|и|у|і|ою)(?![а-яіїєґ])|після\s+(?:прильот|влучанн)|звіт\s+за|підсумки\s+(?:доби|ночі)|ранкове\s+зведення|зведення\s+генштабу|подробиці\s+атаки|ліквідація\s+наслідків|пожежно-рятувальн|руйнування\s+взанаслідок|пошкоджено\s+приватні|уламки\s+(?:впали|ушкодили|пошкодили)|знайдено\s+боєголовку|роботи\s+з\s+знешкодження|результати\s+роботи\s+ппо|підтверджено\s+знищення|ураження\s+цілі|знищено\s+ворожу\s+техніку/i;
+const NIGHT = /(?<![а-яіїєґ])атакув(?:ав|ал[аио])(?![а-яіїєґ])|прольот|(?<![а-яіїєґ])це\s+(?:була|був|було|були)(?![а-яіїєґ])|(?:у|за|протягом)\s+ніч\S*|протягом ночі|вранці|зафіксовано влучання|місцях падіння|локаці[яй] влучан|(?<![а-яіїєґ])[ув]ночі|минул\S*\s+ноч|цієї\s+ночі|сьогодні\s+вночі|вчора|за\s+добу|упродовж\s+(?:ночі|доби)|завдал[аио]\s+(?:\S+\s+){0,2}?удар|завдав\s+(?:\S+\s+){0,2}?удар|завдан\S*\s+удар|(?:було|були)\s+(?:випущен|запущен|збит|знищен|завдан|пошкоджен)|випустил[аи]|запустил[аи]\s+по|наслідки|заявив|заявила|за\s+словами|[—–-]\s*зеленськ|зеленськ\S*\s+(?:заявив|повідомив)|дснс|(?:поранених|постраждалих|загиблих)\s+не\s+зафіксован\S*|спалахн\S*\s+(?:\S+\s+){0,2}?(?:автомобіл|авто|будинок|будівл|склад)|момент\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|(?:відео|кадри|фото|запис)\S*\s+(?:\S+\s+){0,3}?(?:падінн|влучанн|детонаці|вибух|прильот|удар|знищенн|збиття|польот)|вирв(?:а|и|у|і|ою)(?![а-яіїєґ])|після\s+(?:прильот|влучанн)|звіт\s+за|підсумки\s+(?:доби|ночі)|ранкове\s+зведення|зведення\s+генштабу|подробиці\s+атаки|ліквідація\s+наслідків|пожежно-рятувальн|руйнування\s+взанаслідок|пошкоджено\s+приватні|уламки\s+(?:впали|ушкодили|пошкодили)|знайдено\s+боєголовку|роботи\s+з\s+знешкодження|результати\s+роботи\s+ппо|підтверджено\s+знищення|ураження\s+цілі|знищено\s+ворожу\s+техніку/i;
 
-const NOISE = /дякуємо|дякую\s|донат|підтримайте|реклам|проєкт|проект\s|monobank|переходьте|читач|довіряйте|прожили|найважч|app\s?store|google\s?play|збір\b|соборка|підписуйтесь|канал\s+друзів|партнерський\s+пост|промокод|знижка|крипта|заробіток|казино|ставки|посилання\s+в\s+шапці|читайте\s+також|джерело:|інсайд|ексклюзив|надіслати\s+новину|наш\s+бот|опитування|ставте\s+лайк|реакції|підпишись|найновіші\s+новини|офіційний\s+мерч|роззіграш|вигравай|безкоштовно|рекомендація|вже\s+на\s+каналі|подробиці\s+посилання/i;
+const URLS = /https?:\/\/\S+|(?<![а-яіїєґ])(?:t\.me|x\.com|www\.)\S*|\b[\w-]+\.(?:com|ua|org|net|info)\b\S*/gi;
+const NOISE = /розіграш|графік\S*\s+відключ|пошкоджен|(?<![\d.,:])\d{3,}\s+(?:\S+\s+){0,2}?(?:атак|дрон|шахед|ракет)|дякуємо|дякую\s|донат|підтримайте|реклам|проєкт|проект\s|monobank|переходьте|читач|довіряйте|прожили|найважч|app\s?store|google\s?play|збір\b|соборка|підписуйтесь|канал\s+друзів|партнерський\s+пост|промокод|знижка|крипта|заробіток|казино|ставки|посилання\s+в\s+шапці|читайте\s+також|джерело:|інсайд|ексклюзив|надіслати\s+новину|наш\s+бот|опитування|ставте\s+лайк|реакції|підпишись|найновіші\s+новини|офіційний\s+мерч|роззіграш|вигравай|безкоштовно|рекомендація|вже\s+на\s+каналі|подробиці\s+посилання/i;
 
 const FALSE_ALARM = /не\s+підтвердил|хибна\s+ціль|акустична\s+помилка|загроза\s+минула|чисте\s+небо|цілей\s+не\s+виявлено|помилковий\s+пуск|чисто\s+в\s+області/i;
 
@@ -268,10 +328,9 @@ function loadGeo() {
   for (const f of g.features) {
     const { o, n } = f.properties, k = o + '|' + n;
     try {
-      const ring = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0];
-      const xs = ring.map(p => p[0]), ys = ring.map(p => p[1]);
+      const lp = labelPoint(polysOf(f.geometry));
       const stem = n.replace(/\s*район.*/i, '').replace(/(ськ|цьк|зьк)?(ий|ій)$/i, '$1');
-      if (stem.length >= 4) RAION_P.push([new RegExp(LB + stem, 'i'), (Math.min(...ys) + Math.max(...ys)) / 2, (Math.min(...xs) + Math.max(...xs)) / 2]);
+      if (stem.length >= 4 && lp) RAION_P.push([new RegExp(LB + stem, 'i'), +lp[1].toFixed(4), +lp[0].toFixed(4)]);
     } catch (e) {}
     try { addGeo(o, f.geometry); } catch (e) {}
     CANON.set(norm(k), k); CANON.set(norm(o), o);
@@ -413,6 +472,7 @@ function loadUA() {
   const g = JSON.parse(fs.readFileSync(path.join(__dirname, 'public', 'oblasts.json'))); UA_POLYS.length = 0;
   for (const f of g.features) {
     const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [];
+    try { const g = OBL_GEO.get(norm(f.properties.name)), lp = g && polys.length && labelPoint(polys); if (lp) g.pl = lp; } catch (e) {}
     for (const poly of polys) { const r = poly[0]; let a = 90, b = -90, c = 180, d = -180; for (const [x, y] of r) { a = Math.min(a, y); b = Math.max(b, y); c = Math.min(c, x); d = Math.max(d, x); } UA_POLYS.push({ b: [a, b, c, d], r }); }
   }
 }
@@ -473,6 +533,7 @@ function addThreat(o) {
     if (dist(x.pts[x.pts.length - 1], lastP) < rad) {
       join(x);
       if (betterOrg(o.org, x.org)) x.org = o.org;
+      if (o.sd && !x.sd) { if (o.t > x.t) x.t = o.t; recount(x); return; } // оцінка «з півдня» не затирає вже відому позицію
       if (o.t >= x.t) {
         x.t = o.t;
         if (!o.dest) { x.pts = o.pts; x.reg = o.reg; x.t0 = o.t; x.ent = false; if (!o.reg) obsPush(x, o.t, o.pts[0]); if (o.pts.length > 1) x.dst = lastP; }
@@ -577,6 +638,7 @@ async function pollTG(ch) {
       let carry = null;
       const tms = Date.parse(ts);
       text.split('\n').forEach((line, i) => {
+        line = line.replace(URLS, ' ');
         let k = kind(line);
         if (k) carry = k; else if (BULLET.test(line) && carry && line.trim().length < 220) k = carry; else if (line.trim() && !BULLET.test(line)) carry = null;
         const explicit = !!k; // тип названо в самому рядку (або в заголовку списку цього ж допису)
@@ -602,7 +664,10 @@ async function pollTG(ch) {
           if (isTo(raw[0]) && isFrom(raw[raw.length - 1])) raw.reverse();
         }
         for (let i = raw.length - 1; i > 0 && raw.length > 1; i--) if (raw[i][2] && line[raw[i][3] - 1] === '(' && raw.some((q, j) => j !== i && !q[2])) raw.splice(i, 1);
-        const pts = raw.map(p => [p[0], p[1]]);
+        midOrigin(line, raw);
+        let pts = raw.map(p => [p[0], p[1]]);
+        const sd = pts.length === 1 && !raw[0][2] && !originOf(line) ? sideOf(line) : null, sq = sd && sideStart(pts[0], sd);
+        if (sq) pts = [sq, pts[0]];
         if (!pts.length || seen.has(key)) return;
         if (!k && /курс|далі|напрямк|→|➡|прямує|рухаєт|рухаютьс/i.test(line) && !/тривог|відбій/i.test(line)) k = inheritKind(ch, tms, pts);
         if (!k) return;
@@ -612,7 +677,7 @@ async function pollTG(ch) {
           n++; return;
         }
         const cnt = countOf(line), cmin = !cnt && countMinOf(line);
-        const o = { id: key, post: id, type: k, t: tms, pts, text: line.trim().slice(0, 300), ch, dest: pts.length === 1 && (DEST.test(line) || (/(?:^|[\s,])(?:на|до)\s/i.test(line) && !/біля|над\s|район|околиц|поблизу|\sв\s|\sу\s/i.test(line))), n: cnt || (cmin ? 2 : undefined), nMin: cmin || undefined, reg: !!(raw[0] && raw[0][2]), org: originOf(line) };
+        const o = { id: key, post: id, type: k, t: tms, pts, text: line.trim().slice(0, 300), ch, dest: pts.length === 1 && (DEST.test(line) || (/(?:^|[\s,])(?:на|до)\s/i.test(line) && !/біля|над\s|район|околиц|поблизу|\sв\s|\sу\s/i.test(line))), n: cnt || (cmin ? 2 : undefined), nMin: cmin || undefined, reg: !!(raw[0] && raw[0][2]), org: originOf(line), sd: sq ? true : undefined };
         
         if (CLOSING.test(line)) { 
           closeNear(o); 
@@ -804,5 +869,5 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
-exports._t = { inheritKind, lastK, dirCtx, dirOffset, seenAt, pruneSeen, originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
+exports._t = { sideOf, labelPoint, RAION_P, inheritKind, lastK, dirCtx, dirOffset, seenAt, pruneSeen, originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
 if (require.main === module) exports.start();

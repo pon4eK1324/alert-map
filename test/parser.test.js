@@ -301,3 +301,85 @@ test('голий рядок біля живої цілі бере її тип (�
   await feed('near_b', [[1, '→Полтава.']]);
   assert.ok([...t.threats.values()].every(x => x.type === 'shahed'));
 });
+
+// ---- Регресія: розміщення цілей (іноземні міста, сміття, області/райони, сторона підльоту) ----
+const fs = require('node:fs'), pathMod = require('node:path');
+const polysOf = g => g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+const inRingT = (r, la, lo) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) if ((r[i][1] > la) !== (r[j][1] > la) && lo < (r[j][0] - r[i][0]) * (la - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; return c; };
+const inGeomT = (g, la, lo) => polysOf(g).some(p => inRingT(p[0], la, lo) && !p.slice(1).some(h => inRingT(h, la, lo)));
+
+test('міста РФ (Брянськ, Курськ…) не стають українськими селами (Брянське, Курське в Криму), але лишаються «звідки»', () => {
+  assert.deepStrictEqual(t.placesRaw('Вихід Циркону з Курська.'), []);
+  assert.deepStrictEqual(t.placesRaw('❗️Загроза балістики з Брянська'), []);
+  const k = t.placesRaw('Балістика на Київ з Брянська.');
+  assert.strictEqual(k.length, 1); assert.ok(Math.abs(k[0][0] - 50.45) < 0.05);
+  assert.ok(t.originOf('Вихід Циркону з Курська.'), 'originOf усе ще бачить Курськ як джерело');
+  assert.ok(t.originOf('Балістика на Київ з Брянська.'));
+});
+
+test('сміття (статистика, реклама, графіки світла, наслідки) не стає ціллю', async () => {
+  t.threats.clear();
+  await feed('nz_a', [[5, '😡 507 атак російських дронів зафіксували на Херсонщині, – ОВА.'],
+    [5, '⚡️ Графіки відключення, оновлені черги, все про світло в Житомирі та області тут ➡️https://svitlo-ua.info'],
+    [5, 'Київ, Нивки  увага РБпЛА  чат | розіграш | x.com'],
+    [5, '🔥 Ворог атакував Київщину балістикою\n▪️У Бучанському районі пошкоджено об’єкт енергетичної інфраструктури.']]);
+  assert.strictEqual(t.threats.size, 0, [...t.threats.values()].map(x => x.text).join(' | '));
+});
+
+test('посилання в рядку прибираються, а справжня ціль лишається', async () => {
+  t.threats.clear();
+  await feed('nz_b', [[2, '🛸 Шахед над Борисполем t.me/abc_channel https://example.com/x']]);
+  assert.strictEqual(t.threats.size, 1);
+  assert.ok(Math.abs([...t.threats.values()][0].pts[0][0] - 50.35) < 0.1);
+});
+
+test('центри областей і районів лежать усередині власних контурів (Одещина, Ніжинський, Генічеський…)', () => {
+  const pub = f => JSON.parse(fs.readFileSync(pathMod.join(__dirname, '..', 'public', f)));
+  for (const f of [...pub('oblasts.json').features, ...pub('raions.json').features]) {
+    const lp = t.labelPoint(polysOf(f.geometry));
+    assert.ok(lp && inGeomT(f.geometry, lp[1], lp[0]), 'поза контуром: ' + JSON.stringify(f.properties).slice(0, 80));
+  }
+  const od = t.placesRaw('Шахеди на Одещину');
+  const f = pub('oblasts.json').features.find(x => /Одес/.test(x.properties.name));
+  assert.ok(od.length === 1 && inGeomT(f.geometry, od[0][0], od[0][1]));
+});
+
+test('«на Вінниччину, Вінницький район» — область лише уточнює район, а «з Київщини» не ставить ціль у центр Київщини', async () => {
+  const r = t.placesRaw('⚠️3 реактивні шахеди з Київщини на Вінниччину, Вінницький район;');
+  assert.strictEqual(r.length, 2, 'Вінниччина відкинута, лишились Київщина і район');
+  t.threats.clear();
+  await feed('rg_a', [[1, '⚠️3 реактивні шахеди з Київщини на Вінниччину, Вінницький район;']]);
+  const o = [...t.threats.values()];
+  assert.strictEqual(o.length, 1); assert.strictEqual(!!o[0].reg, false, 'ціль не «регіональна»: це маршрут до району');
+  assert.strictEqual(o[0].pts.length, 2);
+  const [a, b] = o[0].pts, kyivOblPole = t.placesRaw('Київщина')[0];
+  assert.ok(Math.abs(b[0] - 49.24) < 0.3 && Math.abs(b[1] - 28.77) < 0.5, 'кінець — Вінницький район');
+  assert.ok(Math.hypot(a[0] - kyivOblPole[0], a[1] - kyivOblPole[1]) > 0.3, 'початок — не центр Київщини, а десь на шляху');
+});
+
+test('sideOf: «з півдня» — сторона підльоту; «з півдня Чернігівщини» — ні', () => {
+  assert.deepStrictEqual(t.sideOf('Реактивний БпЛА на Київ з півдня.'), { dy: -1, dx: 0 });
+  assert.deepStrictEqual(t.sideOf('БпЛА на Харків зі сходу'), { dy: 0, dx: 1 });
+  assert.deepStrictEqual(t.sideOf('БпЛА на Київ з північного заходу'), { dy: 1, dx: -1 });
+  assert.strictEqual(t.sideOf('Реактивний БпЛА з півдня Чернігівщини на Київщину'), null);
+  assert.strictEqual(t.sideOf('БпЛА з півночі Одеської області'), null);
+  assert.strictEqual(t.sideOf('Шахед на Київ'), null);
+});
+
+test('«на Київ з півдня»: значок стартує на ~50 км південніше Києва і летить до нього', async () => {
+  t.threats.clear();
+  await feed('sd_a', [[1, 'Реактивний БпЛА на Київ з півдня.']]);
+  const o = [...t.threats.values()];
+  assert.strictEqual(o.length, 1); assert.strictEqual(o[0].pts.length, 2);
+  assert.ok(o[0].pts[0][0] < 50.45 - 0.3 && Math.abs(o[0].pts[0][1] - 30.52) < 0.1, 'старт на південь від Києва');
+  assert.ok(Math.abs(o[0].dst[0] - 50.45) < 0.05, 'курс — Київ');
+});
+
+test('оцінка «з півдня» не затирає вже відому позицію цілі', async () => {
+  t.threats.clear();
+  await feed('sd_b', [[3, 'Реактивний БпЛА над Вишгородом']]);
+  await feed('sd_c', [[1, 'Реактивний БпЛА на Київ з півдня']]);
+  const o = [...t.threats.values()];
+  assert.strictEqual(o.length, 1);
+  assert.ok(Math.abs(o[0].pts[0][0] - 50.58) < 0.05, 'позиція лишилась біля Вишгорода');
+});

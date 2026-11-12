@@ -46,6 +46,27 @@ function logErr(m) {
   } catch (e) {}
 }
 
+// Журнал розбору (data/lines.log): що парсер відхилив («✗ причина») і що став ціллю («✓ тип [координати]»).
+// Раз на день перегляньте його (локально: /api/lines?only=reject), а помилки додайте до test/parser.test.js.
+let TRACE_ON = false, traceBuf = [], traceTimer = null; const traceSeen = new Set();
+function trace(mark, ch, line, extra) {
+  if (!TRACE_ON) return;
+  line = String(line).replace(/\s+/g, ' ').trim().slice(0, 240); if (line.length < 8) return;
+  const key = mark + line; if (traceSeen.has(key)) return;
+  if (traceSeen.size > 3000) traceSeen.clear(); traceSeen.add(key);
+  traceBuf.push(new Date().toISOString() + ' ' + mark + ' ' + ch + (extra ? ' [' + extra + ']' : '') + ' ' + line);
+  if (!traceTimer) { traceTimer = setTimeout(flushTrace, 20e3); if (traceTimer.unref) traceTimer.unref(); }
+}
+function flushTrace() {
+  traceTimer = null; if (!traceBuf.length) return;
+  const txt = traceBuf.join('\n') + '\n'; traceBuf = [];
+  try {
+    fs.mkdirSync(DATA, { recursive: true });
+    const f = path.join(DATA, 'lines.log');
+    try { if (fs.statSync(f).size > 600 * 1024) fs.writeFileSync(f, fs.readFileSync(f, 'utf8').slice(-300 * 1024).replace(/^[^\n]*\n/, '')); } catch (e) {}
+    fs.appendFileSync(f, txt);
+  } catch (e) {}
+}
 const RAION_P = [];
 // Підпис/значок «області чи району» ставимо у внутрішню точку, найвіддаленішу від кордону (грубий полюс недоступності),
 // а не в центроїд чи середину рамки: вони можуть лежати поза межами (Одещина, Ніжинський, Генічеський райони…).
@@ -644,7 +665,7 @@ async function pollTG(ch) {
         const explicit = !!k; // тип названо в самому рядку (або в заголовку списку цього ж допису)
         const key = id + '#' + i;
 
-        if (NIGHT.test(line) || NOISE.test(line) || FALSE_ALARM.test(line)) return;
+        if (NIGHT.test(line) || NOISE.test(line) || FALSE_ALARM.test(line)) { if (explicit) trace('✗', ch, line, NIGHT.test(line) ? 'наслідки/минуле' : NOISE.test(line) ? 'шум' : 'відбій/хибна'); return; }
 
         if (k === 'ballistic' && !seen.has(key + 'b') && BALL_CUE.test(line) && line.trim().length > 6 && line.trim().length < 260) {
           seen.add(key + 'b');
@@ -668,7 +689,8 @@ async function pollTG(ch) {
         let pts = raw.map(p => [p[0], p[1]]);
         const sd = pts.length === 1 && !raw[0][2] && !originOf(line) ? sideOf(line) : null, sq = sd && sideStart(pts[0], sd);
         if (sq) pts = [sq, pts[0]];
-        if (!pts.length || seen.has(key)) return;
+        if (!pts.length) { if (explicit) trace('✗', ch, line, 'немає місця'); return; }
+        if (seen.has(key)) return;
         if (!k && /курс|далі|напрямк|→|➡|прямує|рухаєт|рухаютьс/i.test(line) && !/тривог|відбій/i.test(line)) k = inheritKind(ch, tms, pts);
         if (!k) return;
         seen.add(key);
@@ -690,6 +712,7 @@ async function pollTG(ch) {
         }
         
         if (!o.dead && !o.reg && o.pts.length) { const lp = lastPos[ch]; if (!lp || tms >= lp.t) lastPos[ch] = { t: tms, p: o.pts[o.pts.length - 1] }; }
+        trace('✓', ch, line, k + ' ' + JSON.stringify(pts) + (o.reg ? ' reg' : '') + (o.dest ? ' dest' : ''));
         addThreat(o); 
         n++;
       });
@@ -795,6 +818,14 @@ const srv = http.createServer((req, res) => {
   };
   if (u.pathname === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); return res.end('ok'); }
   if (u.pathname === '/api/state') { const hl = health(), ref = refTime(hl); return json({ now: Date.now(), ref, stale: hl.stale, lastGood, alerts, threats: recent(35 * 60e3, ref), ball: ballRecent(BALL_TTL * 2, ref), ballTtl: BALL_TTL, source, ttl: TTL, noCourse: noCourse(ref), diag: diag() }); }
+  if (u.pathname === '/api/lines') { // журнал розбору — лише з локальної машини
+    if (!isLocal(req)) { res.writeHead(403); return res.end('Forbidden'); }
+    flushTrace();
+    return fs.readFile(path.join(DATA, 'lines.log'), 'utf8', (e, d) => {
+      let L = (d || '').split('\n').filter(Boolean); if (u.searchParams.get('only') === 'reject') L = L.filter(x => x.includes(' ✗ '));
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(L.slice(-300).join('\n'));
+    });
+  }
   if (u.pathname === '/api/cities') return json(CITIES);
   if (u.pathname === '/api/channels') {
     const canEdit = isLocal(req);
@@ -821,6 +852,7 @@ const srv = http.createServer((req, res) => {
 exports.setFetch = f => { F = f; };
 exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.HOST || '0.0.0.0') => new Promise(ok => {
   if (dataDir) DATA = dataDir;
+  TRACE_ON = !process.env.NO_TRACE;
   for (const d of [DATA, process.cwd(), process.env.PORTABLE_EXECUTABLE_DIR, __dirname]) {
     try {
       const c = JSON.parse(fs.readFileSync(path.join(d || '.', 'config.json')));
@@ -869,5 +901,5 @@ exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.H
   if (selfUrl) setInterval(() => { fetch(selfUrl.replace(/\/+$/, '') + '/health', { signal: AbortSignal.timeout(15000) }).catch(() => {}); }, 10 * 60e3);
   srv.listen(port, host, () => { console.log('AlertMap: http://localhost:' + srv.address().port); console.log('Канали: ' + CHANNELS.join(', ')); ok(srv.address().port); });
 });
-exports._t = { sideOf, labelPoint, RAION_P, inheritKind, lastK, dirCtx, dirOffset, seenAt, pruneSeen, originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
+exports._t = { setTrace: (on, dir) => { const o = DATA; TRACE_ON = on; if (dir) DATA = dir; return o; }, flushTrace, sideOf, labelPoint, RAION_P, inheritKind, lastK, dirCtx, dirOffset, seenAt, pruneSeen, originOf, inferOrigin, entryPoint, inUA, countMinOf, recount, lastPos, hintsFor, decodeHtml, noCourse, orphans, gazPlaces, GAZ, loadGaz, ballWarn: () => ballWarn, DEFAULT_CHANNELS, placesRaw, OBL_GEO, countOf, health, refTime, chStat, recent, sirenAlerts, tokenAlerts, loadGeo, places, kind, pollTG, addThreat, closeNear, threats, setT: t => { TREE = t; }, get: () => alerts };
 if (require.main === module) exports.start();

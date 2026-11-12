@@ -383,3 +383,16 @@ test('оцінка «з півдня» не затирає вже відому �
   assert.strictEqual(o.length, 1);
   assert.ok(Math.abs(o[0].pts[0][0] - 50.58) < 0.05, 'позиція лишилась біля Вишгорода');
 });
+
+test('«Вінниччина: … курсом на Томашпіль, Ладижин»: трек стартує з області, курс — Ладижин; повторний допис не повертає значок на старт', async () => {
+  t.threats.clear();
+  await feed('rg_b', [[3, '🛸 Вінниччина: Реактивні БпЛА курсом на Томашпіль, Ладижин.']]);
+  let o = [...t.threats.values()];
+  assert.strictEqual(o.length, 1);
+  assert.ok(o[0].reg && o[0].trk && o[0].trk.length === 1, 'є трек від точки області');
+  assert.ok(Math.abs(o[0].dst[0] - 48.68) < 0.05 && Math.abs(o[0].dst[1] - 29.23) < 0.05, 'курс — Ладижин');
+  const t0 = o[0].trk[0][0];
+  await feed('rg_c', [[1, '🛸 Вінниччина: Реактивні БпЛА курсом на Томашпіль, Ладижин.']]);
+  o = [...t.threats.values()];
+  assert.strictEqual(o.length, 1); assert.strictEqual(o[0].trk[0][0], t0, 'старт треку не скинуто');
+});

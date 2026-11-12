@@ -402,7 +402,7 @@ const KM=111.3;
 const unitV=(a,b)=>{const n=(b[0]-a[0])*KM,e=(b[1]-a[1])*KM*Math.cos(a[0]*Math.PI/180),l=Math.hypot(n,e);return l?[n/l,e/l]:null};
 function motion(h){
   const now=nowT(),tr=h.trk,P0=h.pts[0],ZZ=h.pts[h.pts.length-1];
-  if(h.reg||h.type==='boom')return{p:P0,b:h.pts.length>1?bearing(P0,ZZ):0};
+  if((h.reg&&!(h.dst&&h.trk&&h.trk.length))||h.type==='boom')return{p:P0,b:h.pts.length>1?bearing(P0,ZZ):0}; // область із курсом («Вінниччина: … на Ладижин») їде до пункту призначення
   if(!tr||!tr.length){ // старі дані без треку
     if(h.pts.length<2)return{p:P0,b:0};
     const d=kmBetween(P0,ZZ);if(d<.5)return{p:P0,b:bearing(P0,ZZ)};
@@ -477,7 +477,7 @@ function render(){
     vis.push(h);seen.add(h.id);
     const cn=credN(h),cf=1;h._b=1;const fade=Math.max(.02,h._b*fadeOf(h)),b=motion(h).b;
     if(h.pts.length>1&&(S.trails==='all'||(S.trails==='fast'&&h.type!=='shahed')))L.polyline(h.pts,{color:TRACK,weight:1.5,dashArray:'5 6',opacity:.55*fade,interactive:false}).addTo(tg);
-    if(h.reg&&S.regZone)L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
+    if(h.reg&&S.regZone&&!(h.dst&&h.trk&&h.trk.length))L.circle(a,{radius:45000,color:cssv('--c-'+h.type),weight:1.2,dashArray:'3 6',fillColor:cssv('--c-'+h.type),fillOpacity:.07,opacity:.8*fade,interactive:false}).addTo(tg);
     const fr=mode==='live'&&!STALE&&RT-h.t<60e3,N=h.type==='boom'||h.nMin?1:Math.min(h.n||1,10); // «2+» (кілька, число невідоме) — один значок із підписом
     if(N<2)syncMarker(h,b,fade,fr,cn);
     else for(let i=0;i<N;i++){const m={...h,id:h.id+'~'+i,n:i===0&&h.n>N?h.n:0,_i:i,_N:N};seen.add(m.id);syncMarker(m,b,fade,fr,cn)} // «N×» → N окремих іконок (не більше 10; решта — числом біля першої)

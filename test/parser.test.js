@@ -396,3 +396,16 @@ test('«Вінниччина: … курсом на Томашпіль, Лади
   o = [...t.threats.values()];
   assert.strictEqual(o.length, 1); assert.strictEqual(o[0].trk[0][0], t0, 'старт треку не скинуто');
 });
+
+test('журнал розбору: відхилене («✗ причина») і прийняте («✓») потрапляють у data/lines.log', async () => {
+  const os = require('node:os'), tmp = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'am-'));
+  const old = t.setTrace(true, tmp);
+  try {
+    t.threats.clear();
+    await feed('tr_a', [[2, 'Київ, Нивки  увага РБпЛА  чат | розіграш | x.com'], [1, '🛸 Шахед над Борисполем']]);
+    t.flushTrace();
+    const log = fs.readFileSync(pathMod.join(tmp, 'lines.log'), 'utf8');
+    assert.match(log, /✗ tr_a \[шум\][^\n]*розіграш/);
+    assert.match(log, /✓ tr_a \[shahed[^\n]*Борисполем/);
+  } finally { t.setTrace(false, old); fs.rmSync(tmp, { recursive: true, force: true }); }
+});

@@ -370,11 +370,12 @@ $('lgi').style.alignItems='center';$('lgi').style.flexWrap='wrap';
 
 const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 /* Вікно цілі: список джерел (канал, час, текст, посилання на пост у Telegram) */
-const originLine=h=>h.org&&h.type!=='boom'?`<div style="font-size:12px;margin-top:4px">${h.org.x?'Летить з':'Ймовірно з'}: <b>${esc(h.org.n)}</b></div>`:'';
+const ARR=['↑','↗','→','↘','↓','↙','←','↖'],CMP=['північ','північний схід','схід','південний схід','південь','південний захід','захід','північний захід'];
+const courseLine=h=>{if(h.type==='boom'||(h.reg&&!h.dst))return'';const m=motion(h);if(!m.mv)return'';const i=Math.round((((m.b%360)+360)%360)/45)%8;return`<div style=\"font-size:12px;margin-top:4px\">Курс: <b>${ARR[i]} ${CMP[i]}</b>${m.v?' · ~'+Math.round(m.v*3600)+' км/год':''}</div>`};
 function popup(h){
   const src=(h.src&&h.src.length?h.src:[{ch:h.ch,id:(h.id||'').split('#')[0],t:h.t,text:h.text}]).slice().sort((x,y)=>y.t-x.t);
   const rows=src.slice(0,8).map(s=>`<div style="margin:6px 0 0;padding-top:5px;border-top:1px solid var(--b)"><a href="https://t.me/${esc(s.id)}" target="_blank" rel="noopener"><b>@${esc(s.ch||'')}</b> · ${pad(new Date(s.t).getHours())}:${pad(new Date(s.t).getMinutes())}</a><br><span style="font-size:12px">${esc(s.text).slice(0,160)}</span></div>`).join('');
-  return `<b>${TNAME[h.type]||'Ціль'}${h.n>1?' · '+h.n+(h.nMin?'+':'')+'×':''}</b> <span style="color:var(--mut)">· повідомлень: ${src.length}</span><div style="font-size:11.5px;color:var(--mut);margin-top:2px">Достовірність: ${'●'.repeat(Math.min(5,credN(h)))}${'○'.repeat(5-Math.min(5,credN(h)))} · незалежних каналів: ${credN(h)}</div>${rows}${src.length>8?'<div style="font-size:11px;margin-top:4px">… і ще '+(src.length-8)+'</div>':''}${originLine(h)}<div style="font-size:11px;color:var(--mut);margin-top:6px">${h.reg?'Точне місце невідоме — десь у межах області':'Місце приблизне, за текстом повідомлень'}</div>`;
+  return `<b>${TNAME[h.type]||'Ціль'}${h.n>1?' · '+h.n+(h.nMin?'+':'')+'×':''}</b> <span style="color:var(--mut)">· повідомлень: ${src.length}</span><div style="font-size:11.5px;color:var(--mut);margin-top:2px">Достовірність: ${'●'.repeat(Math.min(5,credN(h)))}${'○'.repeat(5-Math.min(5,credN(h)))} · незалежних каналів: ${credN(h)}</div>${rows}${src.length>8?'<div style="font-size:11px;margin-top:4px">… і ще '+(src.length-8)+'</div>':''}${courseLine(h)}<div style="font-size:11px;color:var(--mut);margin-top:6px">${h.reg?'Точне місце невідоме — десь у межах області':'Місце приблизне, за текстом повідомлень'}</div>`;
 }
 /* Чи стоїть ціль у зоні тривоги: точка у полігоні району (або не далі tol км від його межі) */
 function inRing(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
@@ -407,42 +408,47 @@ const mk=L.layerGroup().addTo(map),MK=new Map(),SPD={shahed:.05,jet:.17,missile:
 let refAt=performance.now();
 const kmBetween=(a,b)=>Math.hypot((b[0]-a[0])*111.3,(b[1]-a[1])*111.3*Math.cos(a[0]*Math.PI/180));
 const nowT=()=>mode==='live'?(STALE?REF:REF+(performance.now()-refAt)):T;
-/* Модель руху. Сервер дає трек спостережень h.trk=[[t,la,lo],…], куди летить h.dst і звідки h.org.
+/* Модель руху. Сервер дає трек спостережень h.trk=[[t,la,lo],…], куди летить h.dst.
    Значок їде від останньої спостереженої позиції в бік курсу (точка призначення, інакше напрям останніх двох спостережень,
    інакше напрям від місця запуску) зі швидкістю типу цілі. Без курсу не вилітає далі ~5 хв польоту. */
 const KM=111.3;
 const unitV=(a,b)=>{const n=(b[0]-a[0])*KM,e=(b[1]-a[1])*KM*Math.cos(a[0]*Math.PI/180),l=Math.hypot(n,e);return l?[n/l,e/l]:null};
+/* Напрямок і швидкість з останніх спостережень: беремо найдовшу базу (до 4 повідомлень за 25 хв) — так курс стабільніший за пару сусідніх точок */
+function courseFit(tr,k){
+  let j=k;while(j>0&&k-j<3&&tr[k][0]-tr[j-1][0]<25*60e3)j--;
+  const b=[tr[k][1],tr[k][2]];
+  for(;j<k;j++){const a=[tr[j][1],tr[j][2]],d=kmBetween(a,b),dt=(tr[k][0]-tr[j][0])/1000;if(d>2&&dt>20)return{dir:unitV(a,b),v:d/dt}}
+  return null}
 function motion(h){
   const now=nowT(),tr=h.trk,P0=h.pts[0],ZZ=h.pts[h.pts.length-1];
-  if((h.reg&&!(h.dst&&h.trk&&h.trk.length))||h.type==='boom')return{p:P0,b:h.pts.length>1?bearing(P0,ZZ):0}; // область із курсом («Вінниччина: … на Ладижин») їде до пункту призначення
+  if((h.reg&&!(h.dst&&h.trk&&h.trk.length))||h.type==='boom')return{p:P0,b:h.pts.length>1?bearing(P0,ZZ):0,mv:false}; // область із курсом («Вінниччина: … на Ладижин») їде до пункту призначення
   if(!tr||!tr.length){ // старі дані без треку
-    if(h.pts.length<2)return{p:P0,b:0};
-    const d=kmBetween(P0,ZZ);if(d<.5)return{p:P0,b:bearing(P0,ZZ)};
-    const f=Math.min(.92,Math.max(0,(now-(h.t0||h.t))/1000*(SPD[h.type]||.05))/d);
-    return{p:[P0[0]+(ZZ[0]-P0[0])*f,P0[1]+(ZZ[1]-P0[1])*f],b:bearing(P0,ZZ)};
+    if(h.pts.length<2)return{p:P0,b:0,mv:false};
+    const d=kmBetween(P0,ZZ);if(d<.5)return{p:P0,b:bearing(P0,ZZ),mv:false};
+    const v=SPD[h.type]||.05,f=Math.min(.92,Math.max(0,(now-(h.t0||h.t))/1000*v)/d);
+    return{p:[P0[0]+(ZZ[0]-P0[0])*f,P0[1]+(ZZ[1]-P0[1])*f],b:bearing(P0,ZZ),mv:true,v};
   }
   let k=tr.length-1;while(k>0&&tr[k][0]>now)k--; // у перегляді історії — остання позиція, відома на цей час
-  const L=tr[k],pL=[L[1],L[2]],v0=SPD[h.type]||.05,dst=h.dst||null;let v=v0,dir=null;
-  if(dst&&kmBetween(pL,dst)>1)dir=unitV(pL,dst);
-  else if(k>0){const q=tr[k-1],pq=[q[1],q[2]],dk=kmBetween(pq,pL),dt=(L[0]-q[0])/1000;
-    if(dk>2&&dt>20){dir=unitV(pq,pL);const vo=dk/dt;if(vo>v0*.5&&vo<v0*2)v=(v0+vo)/2}}
-  if(!dir&&h.org&&h.org.p&&kmBetween(h.org.p,pL)>5)dir=unitV(h.org.p,pL);
-  if(!dir)return{p:pL,b:0};
+  const L=tr[k],pL=[L[1],L[2]],v0=SPD[h.type]||.05,dst=h.dst||null,fit=k>0?courseFit(tr,k):null;let v=v0,dir=null;
+  if(fit&&fit.v>v0*.5&&fit.v<v0*2)v=(v0+fit.v)/2; // швидкість уточнюємо за спостереженнями, але не дозволяємо їй «поїхати»
+  if(dst&&kmBetween(pL,dst)>1)dir=unitV(pL,dst); // траєкторія заздалегідь: пряма від останньої позиції до названого пункту
+  else if(fit)dir=fit.dir;
+  if(!dir)return{p:pL,b:0,mv:false};
   let s=v*Math.max(0,now-L[0])/1000;
   s=dst?Math.min(s,Math.max(0,kmBetween(pL,dst)-.5)*.97):Math.min(s,v*300);
-  return{p:[pL[0]+dir[0]*s/KM,pL[1]+dir[1]*s/(KM*Math.cos(pL[0]*Math.PI/180))],b:Math.atan2(dir[1],dir[0])*180/Math.PI};
+  return{p:[pL[0]+dir[0]*s/KM,pL[1]+dir[1]*s/(KM*Math.cos(pL[0]*Math.PI/180))],b:Math.atan2(dir[1],dir[0])*180/Math.PI,mv:true,v};
 }
 const projPos=h=>motion(h).p;
 /* Згасання: ціль яскрава до останньої хвилини життя, потім плавно стає повністю прозорою */
 const FADE_MS=3*60e3;
 const lifeOf=h=>h.type==='boom'?Math.min(S.life*60e3,15*60e3):S.life*60e3;
 const fadeOf=h=>{const left=lifeOf(h)-(nowT()-h.t);return left>=FADE_MS?1:Math.max(.1,left/FADE_MS)}; // 100% яскравості, згасання лише в останні 3 хв
-function projOff(h){const p=projPos(h);if(!h._N)return p;const z=map.getZoom(),o2=h._i>=6,n=o2?h._N-6:Math.min(h._N,6),i=o2?h._i-6:h._i,rad=isz()*.62*(o2?1.95:1),a=i/n*2*Math.PI+(o2?.5:0),c=map.project(p,z),q=map.unproject(L.point(c.x+Math.cos(a)*rad,c.y+Math.sin(a)*rad),z);return[q.lat,q.lng]}
+function projOff(h,p0){const p=p0||projPos(h);if(!h._N)return p;const z=map.getZoom(),o2=h._i>=6,n=o2?h._N-6:Math.min(h._N,6),i=o2?h._i-6:h._i,rad=isz()*.62*(o2?1.95:1),a=i/n*2*Math.PI+(o2?.5:0),c=map.project(p,z),q=map.unproject(L.point(c.x+Math.cos(a)*rad,c.y+Math.sin(a)*rad),z);return[q.lat,q.lng]}
 function syncMarker(h,b,fade,fresh,cn){
-  const sig=[h.type,Math.round(b),isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n+(h.nMin?'+':''):0,S.cred?Math.min(5,cn):0].join('|');
+  const sig=[h.type,isz(),S.iconBg,(S.pulse||h.type==='boom')&&fresh,h.reg,S.badge&&h.n>1?h.n+(h.nMin?'+':''):0,S.cred?Math.min(5,cn):0].join('|');
   let e=MK.get(h.id);
-  if(!e){const p=projOff(h);e=MK.set(h.id,{m:L.marker(p,{icon:icon(h,b,fresh,cn),opacity:fade}).bindPopup(popup(h),{maxWidth:PW(),autoPanPaddingTopLeft:[12,112],autoPanPaddingBottomRight:[12,170]}).addTo(mk),cur:p,sig,h}).get(h.id)}
-  else{e.h=h;e.m.setOpacity(fade);if(e.sig!==sig){e.m.setIcon(icon(h,b,fresh,cn));e.sig=sig}const pc=popup(h);if(e.pc!==pc){e.m.setPopupContent(pc);e.pc=pc}}
+  if(!e){const p=projOff(h);e=MK.set(h.id,{rot:b,tb:b,m:L.marker(p,{icon:icon(h,b,fresh,cn),opacity:fade}).bindPopup(popup(h),{maxWidth:PW(),autoPanPaddingTopLeft:[12,112],autoPanPaddingBottomRight:[12,170]}).addTo(mk),cur:p,sig,h}).get(h.id)}
+  else{e.h=h;e.m.setOpacity(fade);e.tb=b;if(e.sig!==sig){e.m.setIcon(icon(h,e.rot,fresh,cn));e.sig=sig;e.sv=null}const pc=popup(h);if(e.pc!==pc){e.m.setPopupContent(pc);e.pc=pc}}
   e.m.setZIndexOffset(h.type==='ballistic'?1000:h.type==='missile'?500:h.type==='jet'?250:0);
 }
 let lastF=performance.now();
@@ -451,7 +457,11 @@ let lastF=performance.now();
   const dt=Math.min(.25,(t-lastF)/1000);lastF=t;const k=1-Math.exp(-dt*3),z=map.getZoom();
   for(const e of MK.values()){
     const o=(e.h._b??1)*fadeOf(e.h);if(Math.abs(o-(e.op??-1))>.01){e.m.setOpacity(o);e.op=o}
-    const p=projOff(e.h),c=e.cur;
+    const mo=motion(e.h),p=projOff(e.h,mo.p),c=e.cur;
+    { // плавний поворот значка до курсу (по найкоротшій дузі), без перестворення іконки
+      const tb=mo.mv?mo.b:e.rot,dl=((tb-e.rot+540)%360)-180;
+      if(Math.abs(dl)>.05){e.rot+=mode==='live'?dl*(1-Math.exp(-dt*4)):dl;if(!e.sv){const el=e.m.getElement();e.sv=el&&el.querySelector('svg')}if(e.sv)e.sv.style.transform='rotate('+e.rot.toFixed(1)+'deg)'}
+    }
     if(mode!=='live'||e.z!==z){e.z=z;e.cur=p;e.m.setLatLng(p);continue} // зум чи історія — без ковзання
     const d=kmBetween(c,p);if(d<.003)continue;
     let q;

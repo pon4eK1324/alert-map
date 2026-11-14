@@ -1,5 +1,5 @@
 // AlertMap: оболонка працює без інтернету; карти/скрипти з CDN кешуються під час перегляду
-const V = 'alertmap-v23', TILES = 'alertmap-tiles2';
+const V = 'alertmap-v24', TILES = 'alertmap-tiles2';
 const SHELL = ['/', '/index.html', '/manifest.json', '/avatar.png', '/avatar-192.png', '/oblasts.json', '/raions.json', '/kyiv.json', '/settlements.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting()));

@@ -761,7 +761,8 @@ const recent = (ms, ref = Date.now()) => [...threats.values()]
         est = [+(a[0] + (b[0] - a[0]) * k).toFixed(4), +(a[1] + (b[1] - a[1]) * k).toFixed(4)];
       }
     }
-    return { ...t, opacity, est };
+    const { org, ...pub } = t; // «звідки летить» — лише внутрішня оцінка для розбору, клієнту її не віддаємо (працювала неточно)
+    return { ...pub, opacity, est };
   }).sort((a, b) => a.t - b.t);
 
 const BALL_TTL = 15 * 60e3;

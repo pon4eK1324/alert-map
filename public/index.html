@@ -3,8 +3,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#12151b"><script>try{var t=(JSON.parse(localStorage.getItem("am_settings")||"{}").theme)||localStorage.getItem("theme")||"dark";if(t==="auto")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.setAttribute("data-theme",t)}catch(e){}</script><link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><link rel="icon" type="image/png" sizes="192x192" href="/avatar-192.png"><link rel="apple-touch-icon" href="avatar.png">
 <title>Мапа тривог України в реальному часі — AlertMap</title>
-<meta name="description" content="Інтерактивна карта повітряних тривог України онлайн: рівні загроз, балістика, дрони, звукові сповіщення та офлайн-режим." />
-<meta name="keywords" content="карта тривог, повітряна тривога, мапа тривог україни, тривоги онлайн, alerts.in.ua" />
+<meta name="description" content="Карта повітряних тривог України онлайн в реальному часі: тривоги по областях і районах, шахеди, ракети, балістика на мапі, таймлапс, звукові сповіщення. Безкоштовно, без реєстрації." />
+<meta name="keywords" content="карта тривог, повітряна тривога, мапа тривог україни, тривоги онлайн, карта повітряних тривог, повітряна тривога зараз, де тривога, шахеди на мапі, ракетна небезпека, alerts.in.ua" />
 <meta name="google-site-verification" content="J_pkVY15dwY4gYqYHQC6ummAFAZ2f3V4BCsXTcvyixM" />
 <meta property="og:site_name" content="AlertMap">
 <meta property="og:type" content="website">
@@ -19,8 +19,20 @@
 <meta name="twitter:description" content="Повітряні тривоги, дрони, ракети й балістика на карті з таймлапсом.">
 <meta name="twitter:image" content="https://alert-map-ect7.onrender.com/og.png">
 <link rel="canonical" href="https://alert-map-ect7.onrender.com/">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<link rel="alternate" hreflang="uk" href="https://alert-map-ect7.onrender.com/">
+<link rel="alternate" hreflang="x-default" href="https://alert-map-ect7.onrender.com/">
+<meta property="og:image:alt" content="AlertMap — карта повітряних тривог України">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebSite","name":"AlertMap","alternateName":["Мапа тривог України","alert-map-ect7.onrender.com"],"url":"https://alert-map-ect7.onrender.com/"}
+{"@context":"https://schema.org","@graph":[
+{"@type":"WebSite","name":"AlertMap","alternateName":["Мапа тривог України","alert-map-ect7.onrender.com"],"url":"https://alert-map-ect7.onrender.com/","inLanguage":"uk"},
+{"@type":"WebApplication","name":"AlertMap — мапа тривог України","url":"https://alert-map-ect7.onrender.com/","applicationCategory":"UtilitiesApplication","operatingSystem":"Any","inLanguage":"uk","description":"Інтерактивна карта повітряних тривог України в реальному часі: області, райони, шахеди, ракети, балістика, таймлапс.","offers":{"@type":"Offer","price":"0","priceCurrency":"UAH"}},
+{"@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Де зараз повітряна тривога в Україні?","acceptedAnswer":{"@type":"Answer","text":"Відкрийте карту AlertMap: області та райони з активною тривогою підсвічуються в реальному часі."}},
+{"@type":"Question","name":"Чи платний AlertMap?","acceptedAnswer":{"@type":"Answer","text":"Ні, карта безкоштовна і працює без реєстрації."}},
+{"@type":"Question","name":"Що показує карта окрім тривог?","acceptedAnswer":{"@type":"Answer","text":"Повідомлення про шахеди, ракети та балістику, таймлапс, пошук населеного пункту, світлу й темну теми та звукові сповіщення."}}
+]}
+]}
 </script>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
@@ -278,6 +290,8 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
 
 </head><body>
 <h1 class="sr-only">AlertMap — мапа тривог України в реальному часі</h1>
+<div class="sr-only"><p>AlertMap — безкоштовна інтерактивна карта повітряних тривог України онлайн. Показує, у яких областях і районах зараз повітряна тривога, а також повідомлення про шахеди, ракети та балістику з таймлапсом, пошуком населеного пункту, світлою і темною темами та звуковими сповіщеннями.</p></div>
+<noscript><p style="padding:16px;color:#fff">Для роботи карти повітряних тривог потрібен JavaScript. Увімкніть його в налаштуваннях браузера.</p></noscript>
 <div id="map"></div>
 <div id="tools"><button id="srb" class="tool" title="Пошук населеного пункту">Пошук</button><button id="fdb" class="tool" title="Стрічка повідомлень">Стрічка</button><button id="sat" class="tool">Супутник</button><button id="cfg" class="tool" title="Вигляд">Вигляд</button></div>
 <div id="pn" class="box"></div>

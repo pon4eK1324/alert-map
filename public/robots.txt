@@ -1,2 +1,4 @@
 User-agent: *
 Allow: /
+
+Sitemap: https://alert-map-ect7.onrender.com/sitemap.xml

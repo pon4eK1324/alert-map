@@ -393,14 +393,14 @@ function styleFor(k,o,items){
 
 /* ---------- Налаштування (зберігаються в браузері одним об'єктом) ---------- */
 const DEF={theme:'dark',accent:'#4f8fe0',isz:36,iconBg:false,pulse:false,badge:true,trails:'off',regZone:false,
- tShahed:true,tMissile:true,tBallistic:true,onlyAlert:false,life:15,v:2,cShahed:'#f5b83d',cMissile:'#ff5d5d',cBallistic:'#c77dff',tJet:true,cJet:'#4fd8ff',tBoom:true,cBoom:'#ff7a1a',cred:true,ballMin:2,minCh:1,
+ tShahed:true,tMissile:true,tBallistic:true,onlyAlert:true,life:15,v:3,cShahed:'#f5b83d',cMissile:'#ff5d5d',cBallistic:'#c77dff',tJet:true,cJet:'#4fd8ff',tBoom:true,cBoom:'#ff7a1a',cred:true,ballMin:2,minCh:1,
  cYellow:'',cRed:'',cArt:'',zop:100,raionB:true,cityLbl:true,oblLbl:true,fscale:100,stats:true,legend:true,ballBanner:true,ballSound:false};
 let S={...DEF};
 try{const o=JSON.parse(localStorage.getItem('am_settings')||'null');
   if(o)Object.assign(S,o);
   else{const t=localStorage.getItem('theme'),a=localStorage.getItem('accent'),z=localStorage.getItem('isz');
     if(t)S.theme=t;if(/^#[0-9a-f]{6}$/i.test(a||''))S.accent=a;if(z)S.isz={s:28,m:36,l:46}[z]||36}
-  if(S.v!==2){S.v=2;S.onlyAlert=false;S.life=15;try{localStorage.setItem('am_settings',JSON.stringify(S))}catch(_){}} // міграція: нові значення за замовчуванням (цілі видно і поза зоною тривоги, життя 15 хв)
+  if(S.v!==3){if(!S.v||S.v<2)S.life=15;S.v=3;S.onlyAlert=true;try{localStorage.setItem('am_settings',JSON.stringify(S))}catch(_){}} // міграція: нові значення за замовчуванням (цілі видно і поза зоною тривоги, життя 15 хв)
 }catch(_){}
 const saveS=()=>{try{localStorage.setItem('am_settings',JSON.stringify(S))}catch(_){}};
 const SVG={

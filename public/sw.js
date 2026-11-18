@@ -1,5 +1,5 @@
 // AlertMap: оболонка працює без інтернету; карти/скрипти з CDN кешуються під час перегляду
-const V = 'alertmap-v24', TILES = 'alertmap-tiles2';
+const V = 'alertmap-v25', TILES = 'alertmap-tiles2';
 const SHELL = ['/', '/index.html', '/manifest.json', '/avatar.png', '/avatar-192.png', '/oblasts.json', '/raions.json', '/kyiv.json', '/settlements.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting()));
@@ -23,4 +23,13 @@ self.addEventListener('fetch', e => {
       return res;
     })));
   }
+});
+
+self.addEventListener('push', e => {
+  let d = {}; try { d = e.data.json(); } catch (_) {}
+  e.waitUntil(self.registration.showNotification(d.title || 'AlertMap', { body: d.body || '', icon: '/avatar-192.png', badge: '/avatar-192.png', tag: d.tag || 'alertmap', renotify: true, data: { url: d.url || '/' } }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close(); const u = (e.notification.data || {}).url || '/';
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(w => { for (const c of w) if ('focus' in c) { if (c.navigate) c.navigate(u); return c.focus(); } return clients.openWindow(u); }));
 });

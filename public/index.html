@@ -919,7 +919,7 @@ if(MY.length&&window.Notification&&Notification.permission==='granted')pushSync(
 
 /* ---------- Про проєкт: автор, джерела, зв'язок ---------- */
 // Заповніть свої дані: порожні поля (telegram, donate) просто не показуються.
-const ABOUT={author:'pon4eK1324',github:'https://github.com/pon4eK1324/alert-map',telegram:'',donate:''};
+const ABOUT={author:'pon4eK1324',github:'',telegram:'',donate:''};
 function aboutHtml(){const a=(u,t)=>`<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`,lk=[];
   if(ABOUT.github)lk.push(a(ABOUT.github,'GitHub'),a(ABOUT.github+'/issues','Повідомити про помилку'));
   if(ABOUT.telegram)lk.push(a('https://t.me/'+ABOUT.telegram.replace(/^@/,''),'Telegram'));

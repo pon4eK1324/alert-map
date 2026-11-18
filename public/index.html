@@ -468,6 +468,11 @@ function courseFit(tr,k){
   const b=[tr[k][1],tr[k][2]];
   for(;j<k;j++){const a=[tr[j][1],tr[j][2]],d=kmBetween(a,b),dt=(tr[k][0]-tr[j][0])/1000;if(d>2&&dt>20)return{dir:unitV(a,b),v:d/dt}}
   return null}
+/* Значок не «залітає» в район без тривоги: рух за курсом обрізається по межі зони тривоги (ZS), напрям лишається. */
+let ZS=null,ZSK='';
+function clipLen(p,dir,max){const st=2,m=Math.min(max,500),c=Math.cos(p[0]*Math.PI/180);
+  for(let d=0;d<=m;d+=st){if(!nearZone(p[0]+dir[0]*d/KM,p[1]+dir[1]*d/(KM*c),ZS,3))return Math.max(0,d-st)}
+  return m+1}
 function motion(h){
   const now=nowT(),tr=h.trk,P0=h.pts[0],ZZ=h.pts[h.pts.length-1];
   if((h.reg&&!(h.dst&&h.trk&&h.trk.length))||h.type==='boom')return{p:P0,b:h.pts.length>1?bearing(P0,ZZ):0,mv:false}; // область із курсом («Вінниччина: … на Ладижин») їде до пункту призначення
@@ -485,6 +490,9 @@ function motion(h){
   if(!dir)return{p:pL,b:0,mv:false};
   let s=v*Math.max(0,now-L[0])/1000;
   s=dst?Math.min(s,Math.max(0,kmBetween(pL,dst)-.5)*.97):Math.min(s,v*300);
+  if(ZS&&h.type!=='boom'){const key=ZSK+'|'+pL[0]+'|'+pL[1]+'|'+dir[0]+'|'+dir[1];
+    if(!h._cl||h._cl.k!==key)h._cl={k:key,m:clipLen(pL,dir,dst?kmBetween(pL,dst):v*300)}; // рахуємо раз на нове спостереження, не щокадру
+    s=Math.min(s,h._cl.m)}
   return{p:[pL[0]+dir[0]*s/KM,pL[1]+dir[1]*s/(KM*Math.cos(pL[0]*Math.PI/180))],b:Math.atan2(dir[1],dir[0])*180/Math.PI,mv:true,v};
 }
 const projPos=h=>motion(h).p;
@@ -540,6 +548,7 @@ function render(){
   // фільтр «лише в зоні тривоги»: ціль без повітряної тривоги під нею — не показуємо (якщо джерело тривог не збоїть)
   const air=items.filter(i=>i.t==='AIR'),useZ=S.onlyAlert&&!(mode==='live'&&SRC_ERR)&&(mode==='live'||snaps.length>0)&&(R.length>0);
   const zs=useZ?[...R.filter(r=>air.some(i=>i.k===r.k||i.k===r.o)).map(r=>r.z),...(kyivZ&&air.some(i=>i.k===KYIV)?[kyivZ]:[])]:null;
+  ZS=zs;ZSK=zs?air.map(i=>i.k).sort().join(';'):'';
   for(const h of threats){
     const LF=h.type==='boom'?Math.min(LIFE,15*60e3):LIFE;
     if(t1Of(h)>RT||RT-h.t>LF||(h.dead&&RT>=h.dead)||!S[TKEY[h.type]]||(h.type==='ballistic'&&!ballConf(h))||(h.type!=='ballistic'&&credN(h)<(S.minCh||1)))continue;

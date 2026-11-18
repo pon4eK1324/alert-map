@@ -844,26 +844,26 @@ async function myLoad(){if(OB.length)return;try{const[o,r]=await Promise.all([fe
   RA=r.features.map(f=>({o:f.properties.o,n:f.properties.n})).sort((a,b)=>a.n.localeCompare(b.n,'uk'))}catch(_){}}
 function goRegion(r){const o=OB.find(x=>x.n===r.split('|')[0]);if(o)map.flyTo(o.c,r.includes('|')?8:7,{duration:1})}
 async function shareR(r,btn){const url=location.origin+(r?'/?r='+encodeURIComponent(r):'/'),text=r?'Карта тривог: '+r.replace('|',', '):'Карта повітряних тривог України';
-  try{if(navigator.share){await navigator.share({title:'AlertMap',text,url});return}}catch(e){if(e&&e.name==='AbortError')return}
+  try{if(navigator.share&&matchMedia('(pointer:coarse)').matches){await navigator.share({title:'AlertMap',text,url});return}}catch(e){if(e&&e.name==='AbortError')return}
   try{await navigator.clipboard.writeText(url);if(btn){const t=btn.textContent;btn.textContent='✓ Скопійовано';setTimeout(()=>btn.textContent=t,1500)}}catch(_){prompt('Скопіюйте посилання',url)}}
 const b64=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');return Uint8Array.from(atob(s+'='.repeat((4-s.length%4)%4)),c=>c.charCodeAt(0))};
 async function pushSync(ask){
   try{if(!('serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window))return PUSH='unsupported';
-    if(!MY.length)return PUSH='';
+    if(!MY.length)return PUSH='nomy';
     if(ask&&Notification.permission==='default')await Notification.requestPermission();
     if(Notification.permission!=='granted')return PUSH=Notification.permission;
     const k=(await (await fetch('/api/push/key')).json()).key;if(!k)return PUSH='off';
     const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription()||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k)});
     const r=await (await fetch('/api/push/sub',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sub:sub.toJSON(),regions:MY})})).json();
     return PUSH=r.ok?'on':'err'}catch(_){return PUSH='err'}}
-const PUSHT={'':'🔔 Увімкнути сповіщення',default:'🔔 Увімкнути сповіщення',on:'🔔 Сповіщення увімкнені',denied:'🔕 Заблоковано в налаштуваннях браузера',off:'🔕 Сповіщення на сервері вимкнені',unsupported:'🔕 Браузер не підтримує (на iPhone — додайте на екран «Додому»)',err:'⚠ Не вдалося, спробуйте ще'};
+const PUSHT={nomy:'➕ Спершу додайте місце зі списку вище','':'🔔 Увімкнути сповіщення',default:'🔔 Увімкнути сповіщення',on:'🔔 Сповіщення увімкнені',denied:'🔕 Заблоковано в налаштуваннях браузера',off:'🔕 Сповіщення на сервері вимкнені',unsupported:'🔕 Браузер не підтримує (на iPhone — додайте на екран «Додому»)',err:'⚠ Не вдалося, спробуйте ще'};
 function myRender(){const box=$('my');if(!box.classList.contains('open'))return;
   const opts='<option value="">+ Додати область чи район…</option>'+OB.map(o=>`<optgroup label="${o.n}"><option value="${o.n}">${o.n} (уся)</option>`+RA.filter(r=>r.o===o.n).map(r=>`<option value="${o.n}|${r.n}">— ${r.n}</option>`).join('')+'</optgroup>').join('');
   const rows=MY.map((r,i)=>`<div class="mr" data-i="${i}"><span>${r.replace('|',', ')}<small>${MYL[myLevel(r)]}</small></span><button data-a="s" title="Поділитися">↗</button><button data-a="x" title="Прибрати">✕</button></div>`).join('');
   const add=LINKR&&!MY.includes(LINKR)?`<button class="mb" data-a="l">+ Додати «${LINKR.replace('|',', ')}»</button>`:'';
   const sel=box.querySelector('select');if(sel&&document.activeElement===sel)return; // не перебиваємо вибір у списку
   box.innerHTML=`<b>Мої місця</b>${add}${rows||'<small style="color:var(--mut)">Додайте область чи район, щоб бачити їхній стан одразу і отримувати сповіщення.</small>'}<select id="mys">${opts}</select><button class="mb" data-a="n">${PUSHT[PUSH]||PUSHT.err}</button><button class="mb" data-a="m">↗ Поділитися картою</button>`}
-$('my').onchange=e=>{if(e.target.id!=='mys'||!e.target.value)return;if(!MY.includes(e.target.value)&&MY.length<10){MY.push(e.target.value);saveMy();if(PUSH==='on')pushSync()}goRegion(e.target.value);myRender()};
+$('my').onchange=e=>{if(e.target.id!=='mys'||!e.target.value)return;if(!MY.includes(e.target.value)&&MY.length<10){MY.push(e.target.value);saveMy();if(PUSH==='nomy')PUSH='';if(PUSH==='on')pushSync()}goRegion(e.target.value);myRender()};
 $('my').onclick=async e=>{const b=e.target.closest('button'),row=e.target.closest('.mr');
   if(b){const a=b.dataset.a,i=row?+row.dataset.i:-1;
     if(a==='x'){MY.splice(i,1);saveMy();if(PUSH==='on')pushSync()}

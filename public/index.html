@@ -232,6 +232,19 @@ body.streets,body.satmode{--barb:24px}
 #my{display:none;position:absolute;z-index:1001;right:max(12px,env(safe-area-inset-right));top:calc(58px + env(safe-area-inset-top));width:min(360px,calc(100vw - 24px));padding:12px;flex-direction:column;gap:8px;max-height:calc(100dvh - 150px);overflow:auto;box-sizing:border-box}
 #my.open{display:flex}#my select,#my .mb{padding:9px 11px;border-radius:10px;border:1px solid var(--btn-b);background:var(--btn);color:var(--txt);font:inherit;cursor:pointer}
 #my .mr{display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:8px;cursor:pointer;font-size:13px}#my .mr:hover{background:var(--btn)}#my .mr span{flex:1}#my .mr small{display:block;color:var(--mut);font-size:11.5px}#my .mr button{background:none;border:0;color:var(--mut);font-size:16px;cursor:pointer;padding:4px 6px}
+/* анімації наведення і натискання (перекривають «пласкі» transition:none вище) */
+button,select,.si,#my .mr,#my .mr button{transition:background .15s,border-color .15s,transform .12s,box-shadow .15s,color .15s!important}
+@media(hover:hover){
+.tool:hover,#bar button:hover,#my .mb:hover,#my select:hover{border-color:var(--accent);transform:translateY(-1px)}
+.tool:hover{box-shadow:0 4px 14px rgba(0,0,0,.28)}
+#my .mr button:hover{color:var(--txt);transform:scale(1.25)}
+.si:hover{transform:translateX(2px)}}
+button:active,.tool:active{transform:scale(.96)!important}
+#my.open,#sr.open,#fd.open{animation:amPop .18s ease-out}
+@keyframes amPop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+#toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;z-index:3000;padding:10px 16px;border-radius:10px;background:var(--panel);border:1px solid var(--accent);color:var(--txt);font-size:14px;font-weight:600;box-shadow:var(--shadow);transition:opacity .2s,transform .2s;white-space:nowrap}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 <script>
 // Web Audio API Sound Generator for Air Raid Siren & Cancellation
@@ -843,9 +856,10 @@ async function myLoad(){if(OB.length)return;try{const[o,r]=await Promise.all([fe
   OB=o.features.map(f=>({n:f.properties.name,c:f.properties.c}));OB.push({n:KYIV,c:[50.45,30.52]});OB.sort((a,b)=>a.n.localeCompare(b.n,'uk'));
   RA=r.features.map(f=>({o:f.properties.o,n:f.properties.n})).sort((a,b)=>a.n.localeCompare(b.n,'uk'))}catch(_){}}
 function goRegion(r){const o=OB.find(x=>x.n===r.split('|')[0]);if(o)map.flyTo(o.c,r.includes('|')?8:7,{duration:1})}
+let toastT;function toast(m){let t=$('toast');if(!t){t=document.createElement('div');t.id='toast';t.setAttribute('role','status');document.body.appendChild(t)}t.textContent=m;void t.offsetWidth;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200)}
 async function shareR(r,btn){const url=location.origin+(r?'/?r='+encodeURIComponent(r):'/'),text=r?'Карта тривог: '+r.replace('|',', '):'Карта повітряних тривог України';
   try{if(navigator.share&&matchMedia('(pointer:coarse)').matches){await navigator.share({title:'AlertMap',text,url});return}}catch(e){if(e&&e.name==='AbortError')return}
-  try{await navigator.clipboard.writeText(url);if(btn){const t=btn.textContent;btn.textContent='✓ Скопійовано';setTimeout(()=>btn.textContent=t,1500)}}catch(_){prompt('Скопіюйте посилання',url)}}
+  try{await navigator.clipboard.writeText(url);toast('✓ Посилання скопійовано');if(btn){const t=btn.textContent;btn.textContent='✓ Скопійовано';setTimeout(()=>btn.textContent=t,1500)}}catch(_){prompt('Скопіюйте посилання',url)}}
 const b64=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');return Uint8Array.from(atob(s+'='.repeat((4-s.length%4)%4)),c=>c.charCodeAt(0))};
 async function pushSync(ask){
   try{if(!('serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window))return PUSH='unsupported';

@@ -245,6 +245,22 @@ button:active,.tool:active{transform:scale(.96)!important}
 #toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;z-index:3000;padding:10px 16px;border-radius:10px;background:var(--panel);border:1px solid var(--accent);color:var(--txt);font-size:14px;font-weight:600;box-shadow:var(--shadow);transition:opacity .2s,transform .2s;white-space:nowrap}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+#splash{position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg,#12151b);color:var(--txt,#eceff4);transition:opacity .35s}
+#splash.out{opacity:0;pointer-events:none}
+#splash .lg{position:relative;width:88px;height:88px}
+#splash .lg img{width:88px;height:88px;border-radius:20px;display:block;position:relative}
+#splash .lg::before{content:'';position:absolute;inset:-8px;border-radius:26px;border:2px solid var(--accent,#4f8fe0);opacity:.6;animation:amRing 1.6s ease-out infinite}
+@keyframes amRing{from{transform:scale(.9);opacity:.7}to{transform:scale(1.25);opacity:0}}
+#splash b{font-size:20px;letter-spacing:.3px}#splash small{color:var(--mut,#8a93a3);font-size:13px}
+#splash .pb{width:140px;height:3px;border-radius:2px;background:var(--btn,#262b35);overflow:hidden}
+#splash .pb::after{content:'';display:block;width:40%;height:100%;border-radius:2px;background:var(--accent,#4f8fe0);animation:amBar 1.1s ease-in-out infinite}
+@keyframes amBar{from{transform:translateX(-100%)}to{transform:translateX(350%)}}
+#ab{display:none;position:absolute;z-index:1001;right:max(12px,env(safe-area-inset-right));top:calc(58px + env(safe-area-inset-top));width:min(360px,calc(100vw - 24px));padding:14px;flex-direction:column;gap:10px;max-height:calc(100dvh - 150px);overflow:auto;box-sizing:border-box;font-size:13px;line-height:1.45}
+#ab.open{display:flex;animation:amPop .18s ease-out}#ab h3{margin:0;font-size:17px}#ab h4{margin:6px 0 0;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--mut)}
+#ab p{margin:0}#ab small,#ab .mut{color:var(--mut);font-size:12px}#ab ul{margin:0;padding-left:18px}
+#ab a{color:var(--accent);text-decoration:none;transition:opacity .15s}#ab a:hover{opacity:.75;text-decoration:underline}
+#ab .lk{display:flex;flex-wrap:wrap;gap:8px}#ab .lk a{padding:8px 12px;border-radius:10px;border:1px solid var(--btn-b);background:var(--btn);color:var(--txt);font-weight:600}#ab .lk a:hover{border-color:var(--accent);text-decoration:none;opacity:1;transform:translateY(-1px)}
+#ab .warn{padding:9px 11px;border-radius:10px;border:1px solid var(--warn);color:var(--warn);font-size:12px}
 </style>
 <script>
 // Web Audio API Sound Generator for Air Raid Siren & Cancellation
@@ -305,15 +321,17 @@ window.addEventListener('click', () => AlertAudio.init(), { once: true });
 </script>
 
 </head><body>
+<div id="splash" role="status" aria-live="polite"><div class="lg"><img src="avatar-192.png" alt=""></div><b>AlertMap</b><div class="pb"></div><small>Завантажуємо мапу тривог…</small></div><noscript><style>#splash{display:none}</style></noscript>
 <h1 class="sr-only">AlertMap — мапа тривог України в реальному часі</h1>
 <div class="sr-only"><p>AlertMap — безкоштовна інтерактивна карта повітряних тривог України онлайн. Показує, у яких областях і районах зараз повітряна тривога, а також повідомлення про шахеди, ракети та балістику з таймлапсом, пошуком населеного пункту, світлою і темною темами та звуковими сповіщеннями.</p></div>
 <noscript><p style="padding:16px;color:#fff">Для роботи карти повітряних тривог потрібен JavaScript. Увімкніть його в налаштуваннях браузера.</p></noscript>
 <div id="map"></div>
-<div id="tools"><button id="srb" class="tool" title="Пошук населеного пункту">Пошук</button><button id="myb" class="tool" title="Збережені області й райони, сповіщення">Мої місця</button><button id="fdb" class="tool" title="Стрічка повідомлень">Стрічка</button><button id="sat" class="tool">Супутник</button><button id="cfg" class="tool" title="Вигляд">Вигляд</button></div>
+<div id="tools"><button id="srb" class="tool" title="Пошук населеного пункту">Пошук</button><button id="myb" class="tool" title="Збережені області й райони, сповіщення">Мої місця</button><button id="abtn" class="tool" title="Автор, джерела даних, зв'язок">Про проєкт</button><button id="fdb" class="tool" title="Стрічка повідомлень">Стрічка</button><button id="sat" class="tool">Супутник</button><button id="cfg" class="tool" title="Вигляд">Вигляд</button></div>
 <div id="pn" class="box"></div>
 <div id="fd" class="box"><div id="fdf"></div><div id="fdl"></div></div>
 <div id="sr" class="box"><input id="sri" placeholder="Місто, селище чи село…" autocomplete="off"><div id="srl"></div></div>
 <div id="my" class="box"></div>
+<div id="ab" class="box"></div>
 <div id="ballb" class="box"></div>
 <div id="stats"></div>
 <div id="at2">Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors</div>
@@ -538,6 +556,8 @@ function render(){
   for(const [id,e] of MK)if(!seen.has(id)){mk.removeLayer(e.m);MK.delete(id)}
   VISN=vis.length;stats(vis,items);renderBall(RT);renderFeed();
 }
+function hideSplash(){const e=document.getElementById('splash');if(!e||e.dataset.h)return;e.dataset.h=1;e.classList.add('out');setTimeout(()=>e.remove(),450)}
+setTimeout(hideSplash,10000); // запасний вихід, якщо сервер довго не відповідає
 async function live(){
   if(mode!=='live')return;
   try{const s=await (await fetch('/api/state')).json();
@@ -549,8 +569,8 @@ async function live(){
     const c=$('st'),tot=ch.length,hh=LG?pad(new Date(LG).getHours())+':'+pad(new Date(LG).getMinutes()):'';
     if(s.stale){c.className='bad';c.textContent='⚠ Канали недоступні'+(hh?' · показано останні відомі цілі (з '+hh+')':'')}
     else{c.className=okc<tot?'warn':'ok';c.textContent='● Канали '+okc+'/'+tot}
-    render();
-  }catch(e){
+    render();hideSplash();
+  }catch(e){hideSplash();
     if(!threats.length&&!liveAlerts.length){try{const o=JSON.parse(localStorage.getItem('am_last')||'null');if(o&&o.s){const q=o.s;liveAlerts=q.alerts||[];threats=q.threats||[];BALL=q.ball||[];REF=q.ref||q.now||Date.now();T=REF;STALE=true;refAt=performance.now();LG=q.lastGood||o.at;render()}}catch(_){}}
     $('src').textContent='Немає зв’язку із сервером';const c=$('st');c.className='bad';c.textContent='⚠ Немає зв’язку із сервером · показано останні відомі цілі'}
 }
@@ -800,7 +820,7 @@ function flyToThreat(h){
 }
 $('fdf').onclick=e=>{const b=e.target.closest('button');if(!b)return;fdType=b.dataset.k;renderFeed(true)};
 $('fdl').onclick=e=>{if(e.target.closest('a'))return;const it=e.target.closest('.fi');if(!it)return;const x=FEEDIT[+it.dataset.i];if(x){if(innerWidth<=640)closePanels();flyToThreat(x.h)}};
-const closePanels=()=>{$('my').classList.remove('open');$('pn').classList.remove('open');$('fd').classList.remove('open');fdOpen=false;$('sr').classList.remove('open')};
+const closePanels=()=>{$('ab').classList.remove('open');$('my').classList.remove('open');$('pn').classList.remove('open');$('fd').classList.remove('open');fdOpen=false;$('sr').classList.remove('open')};
 $('fdb').onclick=()=>{const o=!fdOpen;closePanels();if(o){fdOpen=true;$('fd').classList.add('open');renderFeed(true)}};
 
 /* ---------- Пошук населеного пункту ---------- */
@@ -896,6 +916,20 @@ setInterval(()=>{if(mode!=='live')return;let red=false;
 {const R0=window.__R||new URLSearchParams(location.search).get('r');
  if(R0&&R0.length<120)myLoad().then(()=>{if(!OB.some(o=>o.n===R0.split('|')[0]))return;goRegion(R0);if(!MY.includes(R0)){LINKR=R0;$('my').classList.add('open');myRender()}})}
 if(MY.length&&window.Notification&&Notification.permission==='granted')pushSync(); // сервер на безкоштовному Render може забути підписки — реєструємо знову
+
+/* ---------- Про проєкт: автор, джерела, зв'язок ---------- */
+// Заповніть свої дані: порожні поля (telegram, donate) просто не показуються.
+const ABOUT={author:'pon4eK1324',github:'https://github.com/pon4eK1324/alert-map',telegram:'',donate:''};
+function aboutHtml(){const a=(u,t)=>`<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`,lk=[];
+  if(ABOUT.github)lk.push(a(ABOUT.github,'GitHub'),a(ABOUT.github+'/issues','Повідомити про помилку'));
+  if(ABOUT.telegram)lk.push(a('https://t.me/'+ABOUT.telegram.replace(/^@/,''),'Telegram'));
+  if(ABOUT.donate)lk.push(a(ABOUT.donate,'💛 Підтримати'));
+  return `<h3>AlertMap</h3><p>Безкоштовна карта повітряних тривог України з таймлапсом, цілями та сповіщеннями. Без реєстрації.</p>
+<h4>Автор</h4><p><b>${ABOUT.author}</b></p><div class="lk">${lk.join('')}<a href="#" data-a="sh">↗ Поділитися картою</a></div>
+<h4>Джерела даних</h4><ul><li>Тривоги: ${a('https://alerts.in.ua','alerts.in.ua')}, ${a('https://siren.pp.ua','siren.pp.ua')}, ${a('https://ubilling.net.ua/aerialalerts/','ubilling.net.ua')}</li><li>Цілі: повідомлення публічних Telegram-каналів (місця приблизні)</li><li>Межі районів: ${a('https://github.com/korzhyk/alert-map','korzhyk/alert-map')} (MIT)</li><li>Карта: Leaflet, плитки Esri та © OpenStreetMap</li></ul>
+<div class="warn">Це неофіційний проєкт і не замінює сирени та офіційні застосунки. Дані можуть запізнюватись або бути неточними.</div>`}
+$('abtn').onclick=()=>{const o=!$('ab').classList.contains('open');closePanels();if(o){if(!$('ab').dataset.r){$('ab').innerHTML=aboutHtml();$('ab').dataset.r=1}$('ab').classList.add('open')}};
+$('ab').onclick=e=>{const l=e.target.closest('a[data-a="sh"]');if(l){e.preventDefault();shareR('',l)}};
 
 /* ---------- PWA: офлайн-оболонка ---------- */
 if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'))navigator.serviceWorker.register('sw.js').catch(()=>{});

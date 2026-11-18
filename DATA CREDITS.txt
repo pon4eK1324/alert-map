@@ -1,0 +1,2 @@
+Межі районів: https://github.com/korzhyk/alert-map (MIT, (c) 2022 Andrii Korzh); на їхній основі підготовлено public/raions.json.
+Повний текст ліцензії: LICENSE-korzhyk-alert-map.txt

@@ -9,6 +9,9 @@
     "desktop": "electron .",
     "build:exe": "electron-builder --win portable"
   },
+  "dependencies": {
+    "web-push": "^3.6.7"
+  },
   "devDependencies": {
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0"
@@ -20,6 +23,8 @@
       "main.js",
       "server.js",
       "places.js",
+      "push.js",
+      "seo.js",
       "public/**/*"
     ],
     "win": {

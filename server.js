@@ -1,6 +1,7 @@
 // AlertMap server: збирає тривоги + повітряні цілі, пише історію для таймлапсу, віддає сайт.
 const http = require('http'), fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { PLACES } = require('./places');
+const push = require('./push'), seo = require('./seo');
 // Публічні Telegram-канали (t.me/s/...). Можна змінити у config.json: { "channels": ["kpszsu", "..."] } або змінною TG_CHANNELS.
 // При старті недійсні канали (немає публічного перегляду) автоматично вилучаються з опитування.
 const DEFAULT_CHANNELS = [
@@ -417,7 +418,7 @@ async function pollAlerts() {
       const r = await f(); source = r.note;
       r.list.sort((a, b) => (a.k + a.t).localeCompare(b.k + b.t));
       if (!snaps.length || JSON.stringify(r.list) !== JSON.stringify(alerts)) snaps.push({ t: Date.now(), a: r.list });
-      alerts = r.list; return;
+      alerts = r.list; try { push.onAlerts(alerts); } catch (e) { logErr('push: ' + e.message); } return;
     } catch (e) { errs.push(f.name + ': ' + e.message); }
   }
   source = 'помилка джерел: ' + errs.join('; ') + (geoErr ? ' [' + geoErr + ']' : '') + (TOKEN ? '' : ' (можна додати токен у config.json)');
@@ -845,6 +846,8 @@ const srv = http.createServer((req, res) => {
     if (before) s.unshift({ t: from, a: before.a });
     return json({ now: Date.now(), from, snaps: s, threats: recent(ms), ball: ballRecent(ms), ballTtl: BALL_TTL, source, ttl: TTL });
   }
+  if (push.handle(req, res, u, json, readBody)) return;
+  if (seo.handle(req, res, u, PUB, gz)) return;
   const f = path.join(PUB, u.pathname === '/' ? 'index.html' : path.normalize(u.pathname).replace(/^(\.\.[\/\\])+/, ''));
   if (!f.startsWith(PUB + path.sep)) { res.writeHead(404); return res.end('Not found'); }
   sendFile(req, res, f, gz);
@@ -853,6 +856,7 @@ const srv = http.createServer((req, res) => {
 exports.setFetch = f => { F = f; };
 exports.start = (port = +process.env.PORT || 3000, dataDir, host = process.env.HOST || '0.0.0.0') => new Promise(ok => {
   if (dataDir) DATA = dataDir;
+  push.init(DATA, () => alerts);
   TRACE_ON = !process.env.NO_TRACE;
   for (const d of [DATA, process.cwd(), process.env.PORTABLE_EXECUTABLE_DIR, __dirname]) {
     try {

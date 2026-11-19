@@ -323,7 +323,23 @@ const AlertAudio = {
 window.addEventListener('click', () => AlertAudio.init(), { once: true });
 </script>
 
-<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "31dffba5794446139be6fe849456dbb0"}'></script><!-- End Cloudflare Web Analytics -->
+<!-- Cloudflare Web Analytics -->
+<script>
+(function(){
+  try{
+    var q=new URLSearchParams(location.search);
+    if(q.get('nostats')==='1') localStorage.setItem('am_nostats','1');
+    if(q.get('nostats')==='0') localStorage.removeItem('am_nostats');
+    if(localStorage.getItem('am_nostats')) return;
+  }catch(e){}
+  var s=document.createElement('script');
+  s.type='module';
+  s.src='https://static.cloudflareinsights.com/beacon.min.js';
+  s.setAttribute('data-cf-beacon','{"token": "31dffba5794446139be6fe849456dbb0"}');
+  document.head.appendChild(s);
+})();
+</script>
+<!-- End Cloudflare Web Analytics -->
 </head><body>
 <div id="splash" role="status" aria-live="polite"><div class="lg"><img src="avatar-192.png" alt=""></div><b>AlertMap</b><div class="pb"></div><small>Завантажуємо мапу тривог…</small></div><noscript><style>#splash{display:none}</style></noscript>
 <h1 class="sr-only">AlertMap — мапа тривог України в реальному часі</h1>

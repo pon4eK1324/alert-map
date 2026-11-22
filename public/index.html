@@ -48,6 +48,7 @@ body.satmode{--lbl:#e9ecf1;--lbl-sh:#000}
 *{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--txt);font:14px system-ui,-apple-system,sans-serif}
 #map{position:absolute;inset:0;background:var(--mapbg);outline:0}
 .leaflet-container{background:var(--mapbg);font:inherit}
+.leaflet-fade-anim .leaflet-tile,.leaflet-tile{transition:none!important}
 body.satmode #map,body.satmode .leaflet-container{background:#0b0d11}
 .clbl{color:var(--lbl);font-size:calc(var(--fs,12px) - 1px);text-shadow:0 0 3px var(--lbl-sh),0 0 3px var(--lbl-sh),0 0 5px var(--lbl-sh);white-space:nowrap;text-align:center;transform:translate(-50%,-50%);pointer-events:none;width:max-content}
 .lbl{color:var(--lbl);font-size:var(--fs,12px);text-shadow:0 0 3px var(--lbl-sh),0 0 3px var(--lbl-sh);white-space:nowrap;text-align:center;transform:translate(-50%,-50%);pointer-events:none;width:max-content}
@@ -655,9 +656,16 @@ let obl=null;
 map.createPane('labels');const lp=map.getPane('labels');lp.style.zIndex=450;lp.style.pointerEvents='none';
 const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const EOX='https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2021_3857/default/g/{z}/{y}/{x}.jpg'; // запасні знімки без ключа (Sentinel-2)
-const imagery=L.tileLayer(ESRI,{maxNativeZoom:17,maxZoom:17,updateWhenZooming:false,keepBuffer:1});
+/* Без порожніх квадратів: плитки вантажаться під час руху/зуму (не лише після), з запасом навколо екрана,
+   старі плитки лишаються під новими, невдалі плитки перезапитуються. */
+const TILE_OPTS={updateWhenIdle:false,updateWhenZooming:true,updateInterval:80,keepBuffer:COARSE?3:6};
+const PTile=L.TileLayer.extend({
+  _getTiledPixelBounds(c){const b=L.TileLayer.prototype._getTiledPixelBounds.call(this,c),t=this.getTileSize().x*(COARSE?.6:1);return L.bounds(b.min.subtract([t,t]),b.max.add([t,t]))}
+});
+const imagery=new PTile(ESRI,{maxNativeZoom:17,maxZoom:17,...TILE_OPTS});
 let imgErr=0,eox=false;
-imagery.on('tileerror',()=>{if(!eox&&++imgErr>=6){eox=true;imagery.options.maxNativeZoom=13;imagery.setUrl(EOX);$('at').textContent='Imagery: Sentinel-2 cloudless by EOX (Contains modified Copernicus Sentinel data)'}});
+imagery.on('tileerror',e=>{const t=e.tile;if(t&&(t._rt=(t._rt||0)+1)<=2){const u=t.src;setTimeout(()=>{if(t.parentNode)t.src=u},600*t._rt)}
+  if(!eox&&++imgErr>=6){eox=true;imagery.options.maxNativeZoom=13;imagery.setUrl(EOX);$('at').textContent='Imagery: Sentinel-2 cloudless by EOX (Contains modified Copernicus Sentinel data)'}});
 /* Підписи населених пунктів (власні дані, без зовнішніх сервісів): міста → селища → села залежно від наближення.
    Працюють і на темній мапі, і на супутнику; файл settlements.json вантажиться, коли потрібні міста. */
 const cityLayer=L.layerGroup().addTo(map);let SET=null,setLoading=false;
@@ -709,7 +717,7 @@ function uaPath(z){
       path.closePath()}}
   return UA_CLIP[z]={path,x0,y0,x1,y1};
 }
-const UATiles=L.TileLayer.extend({
+const UATiles=PTile.extend({
   createTile(coords,done){
     const sz=this.getTileSize(),cv=document.createElement('canvas');cv.width=sz.x;cv.height=sz.y;
     const clip=uaPath(coords.z),ox=coords.x*sz.x,oy=coords.y*sz.y;
@@ -717,8 +725,9 @@ const UATiles=L.TileLayer.extend({
     if(!clip||ox>clip.x1||ox+sz.x<clip.x0||oy>clip.y1||oy+sz.y<clip.y0){setTimeout(()=>done(null,cv),0);return cv}
     const img=new Image();
     img.onload=()=>{const c=cv.getContext('2d');c.save();c.translate(-ox,-oy);c.clip(clip.path);c.setTransform(1,0,0,1,0,0);c.drawImage(img,0,0,sz.x,sz.y);c.restore();done(null,cv)};
-    img.onerror=()=>done(new Error('tile'),cv);
-    img.src=this.getTileUrl(coords);
+    let tries=0;const url=this.getTileUrl(coords);
+    img.onerror=()=>{if(++tries<=2){setTimeout(()=>{img.src=url+(url.includes('?')?'&':'?')+'r='+tries},500*tries)}else done(new Error('tile'),cv)};
+    img.src=url;
     return cv;
   }
 });
@@ -727,7 +736,7 @@ function curBase(){return sat?BASE_SAT:STR?{...BASE_DARK,fillOpacity:.12}:BASE_D
 function updStreets(quiet){
   try{
     const want=!sat&&map.getZoom()>=8,u=stUrl();
-    if(!STREETS)STREETS=new UATiles(u,{maxNativeZoom:16,maxZoom:17,updateWhenZooming:false,keepBuffer:1});
+    if(!STREETS)STREETS=new UATiles(u,{maxNativeZoom:16,maxZoom:17,...TILE_OPTS});
     else if(STREETS._u!==u)STREETS.setUrl(u);
     STREETS._u=u;const was=STR;STR=want;
     want?STREETS.addTo(map):STREETS.remove();

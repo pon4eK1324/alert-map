@@ -1,5 +1,5 @@
 // AlertMap: оболонка працює без інтернету; карти/скрипти з CDN кешуються під час перегляду
-const V = 'alertmap-v28', TILES = 'alertmap-tiles2';
+const V = 'alertmap-v29', TILES = 'alertmap-tiles2';
 const SHELL = ['/', '/index.html', '/manifest.json', '/avatar.png', '/avatar-192.png', '/oblasts.json', '/raions.json', '/kyiv.json', '/settlements.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting()));
@@ -7,7 +7,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V && k !== TILES).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-async function trim(c) { const ks = await c.keys(); if (ks.length > 600) for (const k of ks.slice(0, ks.length - 600)) await c.delete(k); }
+async function trim(c) { const ks = await c.keys(); if (ks.length > 3000) for (const k of ks.slice(0, ks.length - 3000)) await c.delete(k); }
 self.addEventListener('fetch', e => {
   const r = e.request; if (r.method !== 'GET') return;
   const u = new URL(r.url);
